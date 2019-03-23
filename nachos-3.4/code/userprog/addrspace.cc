@@ -107,7 +107,7 @@ AddrSpace::AddrSpace(OpenFile *executable)
 			printf("CRITICAL ERROR: GLOBAL BITMAP IS NULL. HOW DID THIS HAPPEN?!\n");
 			SExit(-4);//legit don't know how this could happen but who knows
 		}
-		printf("Page availability before adding the process:\n");
+		printf("Page availability before adding the process:\n ");
 		//memMap->setMarks();		//sets marks
 		memMap->Print();
 		memMap->setBestWorstDefault();
