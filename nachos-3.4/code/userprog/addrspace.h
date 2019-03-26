@@ -31,14 +31,17 @@ class AddrSpace {
 
     void SaveState();			// Save/restore address space-specific
     void RestoreState();		// info on a context switch
+
     //Begin Changes by Chau Cao
     int getNumPages();
     int getMemIndex();
 
-  private:
+  public:
     ExceptionType addTranslate(int virtAddr, int* physAddr, int size, bool writing);
     int memIndex;
     void setMemory();
+    void markMemory();
+    bool getPage(int x);
     //unsigned int kernelRegisters[NumTotalRegs];
     //End changes by Chau Cao
 

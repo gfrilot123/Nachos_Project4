@@ -81,6 +81,7 @@ ExceptionHandler(ExceptionType which)
 	int arg1 = machine->ReadRegister(4);
 	int arg2 = machine->ReadRegister(5);
 	int arg3 = machine->ReadRegister(6);
+	int addressPg = machine->ReadRegister(39);
 	int Result;
 
 
@@ -262,10 +263,20 @@ ExceptionHandler(ExceptionType which)
 		SExit(1);
 		break;
 
+	case PageFaultException:
+			//puts ("PageFaultException");
+			printf("Page fault has occurred \n");
+			//OpenFile* openFile = fileSystem->Open("0.swap");
+			//space->markMemory();
+			if (currentThread->getName() == "main")
+					ASSERT(FALSE);
+			SExit(1);
+			break;
+
 		default :
 		     printf("Unexpected user mode exception %d %d\n", which, type);
 		      if (currentThread->getName() == "main")
-		//      ASSERT(FALSE);
+		      //ASSERT(FALSE);
 		      SExit(1);
 		break;
 		//end code changes by Chau Cao

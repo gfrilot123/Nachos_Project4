@@ -18,6 +18,7 @@ main()
 
 // Note for chau when there is not enough memory it doesn't properly deallocate the call
 // Begin code added by Joseph Aucoin
+/*
     int i;
     for (i = 0; i < 10; i++)
     {
@@ -28,11 +29,11 @@ main()
           Exit(0);
         }
     }
-
+*/
 // End code added by Joseph Aucoin
 
+    Halt();
     Exit(0);
-    //Halt();
     //Join(Exec("../test/halt"));
     /* not reached */
 }

@@ -68,8 +68,30 @@ AddrSpace::AddrSpace(OpenFile *executable)
 			printf("Executable is null. Exiting\n");
 			SExit(-1);
 		}
-    NoffHeader noffH;
-    unsigned int i, size;
+		NoffHeader noffH;
+		unsigned int i, size;
+		size = noffH.code.size + noffH.initData.size + noffH.uninitData.size
+			+ UserStackSize;
+	  // Code added by Joseph Aucoin
+		// Variables to store executable length and char buffer
+		//int execLength = executable->Length();
+		char* buffer = new char[size];
+
+		// Creates process swap file based on currentID
+		char processId[100];
+		sprintf(processId, "%d.swap", currentId);
+		printf("%s\n",processId);
+
+		// Creation and opening of swap files
+		fileSystem->Create( processId , size);
+		OpenFile* openFile = fileSystem->Open(processId);
+		// Copies the user program into a swap files for reading
+		openFile->WriteAt(buffer, size, 0);
+		//printf("%d\n", executable->Length());
+		
+		// End code added by Joseph Aucoin
+
+
 
     executable->ReadAt((char *)&noffH, sizeof(noffH), 0);
     if ((noffH.noffMagic != NOFFMAGIC) && (WordToHost(noffH.noffMagic) == NOFFMAGIC))
@@ -86,6 +108,9 @@ AddrSpace::AddrSpace(OpenFile *executable)
 						// to leave room for the stack
     numPages = divRoundUp(size, PageSize);
     size = numPages * PageSize;
+
+		//char* buffer;
+		//openFile->Write(buffer, executable->Length());
 
 		if(numPages > NumPhysPages) {
 			printf("The desired user program is bigger than physical memory can accept without virtual memory. Exiting\n");
@@ -148,6 +173,7 @@ AddrSpace::AddrSpace(OpenFile *executable)
 			}
 			else {
 				setMemory();
+				//markMemory();
 			}
 
 		}
@@ -160,15 +186,17 @@ AddrSpace::AddrSpace(OpenFile *executable)
 
 		ExceptionType exception;
 		int physicalAddress;
+		//openFile->WriteAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
     if (noffH.code.size > 0) {
     	DEBUG('a', "Initializing code segment, at 0x%x, size %d\n",noffH.code.virtualAddr, noffH.code.size);
-
 			exception = addTranslate(noffH.code.virtualAddr, &physicalAddress, noffH.code.size, FALSE);
 			if (exception != NoException) {
 				machine->RaiseException(exception, noffH.code.virtualAddr);
 			}
 			else {
+			  //openFile->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
 				executable->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
+
 			}
 		}
 
@@ -179,6 +207,7 @@ AddrSpace::AddrSpace(OpenFile *executable)
 			if (exception != NoException) {
 				machine->RaiseException(exception, noffH.initData.virtualAddr);
 			}
+			//openFile->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
 			executable->ReadAt(&(machine->mainMemory[physicalAddress]),noffH.initData.size, noffH.initData.inFileAddr);
     }
 
@@ -270,6 +299,7 @@ void AddrSpace::setMemory() {
 	printf("Index %d\n", memIndex);
 	for (int x = 0; x < numPages; x++) {
 		pageTable[x].virtualPage = x;
+		//MemMap needs to change to only mark when loading into memory
 		memMap->Mark(startIndex + x);
 		pageTable[x].physicalPage = startIndex + x;
 		bzero(machine->mainMemory + (startIndex * 256), 256);
@@ -280,6 +310,32 @@ void AddrSpace::setMemory() {
 	}
 }
 //end code changes by Chau Cao
+
+
+// Begin code changes by Joseph Aucoin
+void AddrSpace::markMemory() {
+	// Marks the page table as invalid
+
+	int startIndex = memIndex;
+	printf("Index %d\n", memIndex);
+	for (int x = 0; x < numPages; x++) {
+		pageTable[x].virtualPage = x;
+		//MemMap needs to change to only mark when loading into memory
+		memMap->Mark(startIndex + x);
+		pageTable[x].physicalPage = startIndex + x;
+		bzero(machine->mainMemory + (startIndex * 256), 256);
+		pageTable[x].valid = TRUE;
+		pageTable[x].use = false;
+		pageTable[x].dirty = false;
+		pageTable[x].readOnly = false;
+	}
+}
+
+bool AddrSpace::getPage(int x)
+{
+	return pageTable[x].valid;
+}
+// End code changed by Joseph Aucoin
 
 //----------------------------------------------------------------------
 // AddrSpace::InitRegisters
