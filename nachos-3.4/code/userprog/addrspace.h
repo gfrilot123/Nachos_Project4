@@ -34,11 +34,12 @@ class AddrSpace {
     //Begin Changes by Chau Cao
     int getNumPages();
     int getMemIndex();
-
+    void setValid();
   private:
     ExceptionType addTranslate(int virtAddr, int* physAddr, int size, bool writing);
     int memIndex;
     void setMemory();
+
     //unsigned int kernelRegisters[NumTotalRegs];
     //End changes by Chau Cao
 
