@@ -68,8 +68,9 @@ AddrSpace::AddrSpace(OpenFile *executable)
 			printf("Executable is null. Exiting\n");
 			SExit(-1);
 		}
-		NoffHeader noffH;
-		unsigned int i, size;
+    NoffHeader noffH;
+    unsigned int i, size;
+
 		size = noffH.code.size + noffH.initData.size + noffH.uninitData.size
 			+ UserStackSize;
 	  // Code added by Joseph Aucoin
@@ -80,7 +81,7 @@ AddrSpace::AddrSpace(OpenFile *executable)
 		// Creates process swap file based on currentID
 		char processId[100];
 		sprintf(processId, "%d.swap", currentId);
-		printf("%s\n",processId);
+		//printf("%s\n",processId);
 
 		// Creation and opening of swap files
 		fileSystem->Create( processId , size);
@@ -88,10 +89,8 @@ AddrSpace::AddrSpace(OpenFile *executable)
 		// Copies the user program into a swap files for reading
 		openFile->WriteAt(buffer, size, 0);
 		//printf("%d\n", executable->Length());
-		
+
 		// End code added by Joseph Aucoin
-
-
 
     executable->ReadAt((char *)&noffH, sizeof(noffH), 0);
     if ((noffH.noffMagic != NOFFMAGIC) && (WordToHost(noffH.noffMagic) == NOFFMAGIC))
@@ -103,23 +102,24 @@ AddrSpace::AddrSpace(OpenFile *executable)
     //ASSERT(noffH.noffMagic == NOFFMAGIC);
 
 // how big is address space?
+// Size of executable only /instructions line for line
+		printf("noffH.code.size: %d%s",noffH.code.size,"\n");
+// Size of local variabes in main
+		printf("noffH.initData.size: %d%s",noffH.initData.size,"\n");
+//Size of global variables in main
+		printf("noffH.uninitData.size: %d%s",noffH.uninitData.size,"\n");
     size = noffH.code.size + noffH.initData.size + noffH.uninitData.size
 			+ UserStackSize;	// we need to increase the size
 						// to leave room for the stack
+		printf("UserStackSize: %d%s",UserStackSize,"\n");
+		printf("Size of program before numPages: %d%s",size,"\n");
     numPages = divRoundUp(size, PageSize);
+		printf("numPages: %d%s",numPages,"\n");
+
     size = numPages * PageSize;
+		printf("Size of program after numPages: %d%s",size,"\n");
 
-		//char* buffer;
-		//openFile->Write(buffer, executable->Length());
 
-		if(numPages > NumPhysPages) {
-			printf("The desired user program is bigger than physical memory can accept without virtual memory. Exiting\n");
-			SExit(-1);//MAKE THIS MEANINGFUL
-		}
-    //ASSERT(numPages <= NumPhysPages);		// check we're not trying
-						// to run anything too big --
-						// at least until we have
-						// virtual memory
     DEBUG('a', "Initializing address space, num pages %d, size %d\n",
 					numPages, size);
 // first, set up the translation
@@ -134,49 +134,9 @@ AddrSpace::AddrSpace(OpenFile *executable)
 		}
 		printf("Page availability before adding the process:\n ");
 		//memMap->setMarks();		//sets marks
+
 		memMap->Print();
-		memMap->setBestWorstDefault();
-
-		//check if the number of pages needed is greater than the number of available frames
-		//in memory. If numPages is greater, produce output stating that and Exit()
-		if(numPages > memMap->NumClear()) {
-			printf("There is not enough memeory available for the requested process\n");
-			SExit(-1);//MAKE THIS MEANINGFUL
-		}
-		//else assign the pageTable values for the Virtual Address and take available
-		//frames in main memory. Mark the appropriate bits as used.
-		else {
-			//**********Place Fit Alogorithm calls here and place memIndex equal to the return value************
-			switch (currentIdGlobal){
-					case 1:
-						printf("FIRST FIT\n");
-						memIndex = memMap->FirstFit(numPages, 0);
-					break;
-					case 2:
-						printf("BEST FIT\n");
-						memIndex = memMap->BestFit(numPages, 0, 999);
-					break;
-					case 3:
-						printf("WORST FIT\n");
-						memIndex = memMap->WorstFit(numPages, 0, 0);
-					break;
-					default:
-						printf("FIRST FIT\n");
-						memIndex = memMap->FirstFit(numPages, 0);
-					break;
-			}
-			//Following code changes by Chau Cao
-			if(memIndex == -1) {
-				printf("There is not a large enough contiguous block of memory for the requested process\n");
-				SExit(-1);
-				//Exit this gracefully pls
-			}
-			else {
-				setMemory();
-				//markMemory();
-			}
-
-		}
+		setMemory();
 
 		//Code changes by Chau Cao
 		//Calls OpenFile.ReadAt to pull the instructions and initData that needs to be
@@ -186,16 +146,17 @@ AddrSpace::AddrSpace(OpenFile *executable)
 
 		ExceptionType exception;
 		int physicalAddress;
-		//openFile->WriteAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
     if (noffH.code.size > 0) {
     	DEBUG('a', "Initializing code segment, at 0x%x, size %d\n",noffH.code.virtualAddr, noffH.code.size);
+
 			exception = addTranslate(noffH.code.virtualAddr, &physicalAddress, noffH.code.size, FALSE);
+
 			if (exception != NoException) {
 				machine->RaiseException(exception, noffH.code.virtualAddr);
 			}
 			else {
-			  //openFile->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
 				executable->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
+				//inFile Address = segment 40
 
 			}
 		}
@@ -207,16 +168,11 @@ AddrSpace::AddrSpace(OpenFile *executable)
 			if (exception != NoException) {
 				machine->RaiseException(exception, noffH.initData.virtualAddr);
 			}
-			//openFile->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
 			executable->ReadAt(&(machine->mainMemory[physicalAddress]),noffH.initData.size, noffH.initData.inFileAddr);
     }
 
 
-		//Print out the bitmap after allocating the user program
-		printf("Page availability after adding the process:\n");
-		memMap->Print();
 
-		//End changes by Chau Cao
 }
 
 //----------------------------------------------------------------------
@@ -295,47 +251,24 @@ void AddrSpace::setMemory() {
 	//Call bzero on that location in mainMemory to clear that frame of size 256 for the
 	//	instructions being stored then break
 	//The assignemnts mimic the one provided in the base exception
-	int startIndex = memIndex;
 	printf("Index %d\n", memIndex);
 	for (int x = 0; x < numPages; x++) {
 		pageTable[x].virtualPage = x;
-		//MemMap needs to change to only mark when loading into memory
-		memMap->Mark(startIndex + x);
-		pageTable[x].physicalPage = startIndex + x;
-		bzero(machine->mainMemory + (startIndex * 256), 256);
-		pageTable[x].valid = true;
+		pageTable[x].valid = false;
 		pageTable[x].use = false;
 		pageTable[x].dirty = false;
 		pageTable[x].readOnly = false;
+		if(pageTable[x].valid)
+		{
+		printf("Page availability after adding the process:\n ");
+		memMap->Mark(x);
+		memMap->Print();
+		}
+		InitRegisters();
 	}
+
 }
 //end code changes by Chau Cao
-
-
-// Begin code changes by Joseph Aucoin
-void AddrSpace::markMemory() {
-	// Marks the page table as invalid
-
-	int startIndex = memIndex;
-	printf("Index %d\n", memIndex);
-	for (int x = 0; x < numPages; x++) {
-		pageTable[x].virtualPage = x;
-		//MemMap needs to change to only mark when loading into memory
-		memMap->Mark(startIndex + x);
-		pageTable[x].physicalPage = startIndex + x;
-		bzero(machine->mainMemory + (startIndex * 256), 256);
-		pageTable[x].valid = TRUE;
-		pageTable[x].use = false;
-		pageTable[x].dirty = false;
-		pageTable[x].readOnly = false;
-	}
-}
-
-bool AddrSpace::getPage(int x)
-{
-	return pageTable[x].valid;
-}
-// End code changed by Joseph Aucoin
 
 //----------------------------------------------------------------------
 // AddrSpace::InitRegisters
@@ -378,7 +311,9 @@ AddrSpace::InitRegisters()
 //----------------------------------------------------------------------
 
 void AddrSpace::SaveState()
-{}
+{
+	currentThread->SaveUserState();
+}
 
 //----------------------------------------------------------------------
 // AddrSpace::RestoreState

@@ -32,11 +32,11 @@
 
 // ----------------------------------------------------------------------------
 // processCreator() function created for forking Join() method
-
+void setValid(int frame);
+static int FrameFinder();
 void processCreator(int arg);
 static int SRead(int addr, int size, int id);
 static void SWrite(char *buffer, int size, int id);
-
 
 // end FA98
 
@@ -72,6 +72,15 @@ AddrSpace *space;
 char *file;
 Thread *t;
 processNode * newProcess;
+//*********************************************************************
+// Begin code changes by Gerald Frilot
+// Global variable used to determine what page is next
+//*********************************************************************
+int pageRequested;
+int frameNumber;
+//*********************************************************************
+// End code changes by Gerald Frilo
+//*********************************************************************
 
 //Predefined
 void
@@ -81,7 +90,6 @@ ExceptionHandler(ExceptionType which)
 	int arg1 = machine->ReadRegister(4);
 	int arg2 = machine->ReadRegister(5);
 	int arg3 = machine->ReadRegister(6);
-	int addressPg = machine->ReadRegister(39);
 	int Result;
 
 
@@ -257,32 +265,60 @@ ExceptionHandler(ExceptionType which)
 		SExit(1);
 		break;
 	case NumExceptionTypes :
-		puts ("NumExceptionTypes");
+		puts ("NumExceptionTypes");			break;
 		if (currentThread->getName() == "main")
 		ASSERT(FALSE);  //Not the way of handling an exception.
 		SExit(1);
 		break;
 
-	case PageFaultException:
-			//puts ("PageFaultException");
-			printf("Page fault has occurred \n");
-			//OpenFile* openFile = fileSystem->Open("0.swap");
-			//space->markMemory();
-			if (currentThread->getName() == "main")
-					ASSERT(FALSE);
-			SExit(1);
-			break;
 
-		default :
+		//*********************************************************************
+		// Begin code changes by Gerald Frilot
+		// When a miss occurs, puts is a debug feature printing the parameter
+		//to the console setValid is a fuction that captures the fault and
+		// makes the changes necessary to bring the right page into main memory
+		//*********************************************************************
+		case PageFaultException:
+			puts("PageFaultException - Main\n");
+			//memMap->Mark(0);
+			frameNumber  = FrameFinder();
+			//printf("Free Frame %d\n", frameNumber);
+			setValid(frameNumber);
+			//SExit(1);
+			break;
+			//*********************************************************************
+			// End code changes by Gerald Frilot
+			//*********************************************************************
+
+			default :
 		     printf("Unexpected user mode exception %d %d\n", which, type);
 		      if (currentThread->getName() == "main")
-		      //ASSERT(FALSE);
+
 		      SExit(1);
 		break;
-		//end code changes by Chau Cao
+
 	}
 	delete [] ch;
 }
+
+// Begin code added by Joseph Aucoin
+// Finds an available frame to use by searching for the first available
+int FrameFinder()
+{
+	bool frameFree = FALSE;
+	int frameNum = -1;
+	for(int x = 0; x < 32; x++)
+	{
+			frameFree = memMap->Test(x);
+			if(frameFree != TRUE)
+			{
+				frameNum = x;
+				break;
+			}
+	}
+	return frameNum;
+}
+// End code added by Joseph Aucoin
 
 //Predefined
 static int SRead(int addr, int size, int id)  //input 0  output 1
@@ -338,7 +374,7 @@ static void SWrite(char *buffer, int size, int id)
 }
 
 //********************************************************************************************
-//Begin code changes by Gerald Frilot
+// Begin code changes by Gerald Frilot
 // Method processCreator() receives an int argument and is forked by both cases in Exec() depending
 // on what method forked it first for now.
 //***************************************************************************************************
@@ -349,11 +385,57 @@ void processCreator(int arg)
 	currentThread->space->InitRegisters();
 	currentThread->space->RestoreState();
 	machine->Run();
-
-
-
 	ASSERT(FALSE);
 }
+
+//*********************************************************************
+//End code changes by Gerald Frilot
+//*********************************************************************
+
+//*********************************************************************
+// Begin code changes by Gerald Frilot
+// set Valid is the function called that loop from the page requested to
+// the last instruction on that page.
+// When the end of the page is reached, another exception is called
+// and the exception is thrown again untill all pages are in
+// mainmemory.
+//*********************************************************************
+void setValid(int frame)
+{
+	//for(int i =pageRequested; i< currentThread->space->getNumPages();i++)
+	//{
+	//machine->pageTable[frame].virtualPage = frame;
+	machine->pageTable[frame].physicalPage =  frame;
+	machine->pageTable[frame].valid = true;
+	machine->pageTable[frame].use = true;
+	memMap->Mark(frame);
+	printf("Page availability after adding the process: %d\n ", frame);
+	memMap->Print();
+
+	//bzero(memory->mainMemory + (frame * 256), 256);
+
+	/*
+		for(int j=i+1; j<i+2;j++)
+		{
+
+			printf("Page requested:%d%s ",j,"\n");
+			machine->pageTable[j].valid = false;
+			pageRequested=j;
+			if(!machine->pageTable[j].valid)
+			puts("PageFaultException - Miss\n");
+
+		}
+	*/
+	//printf("Page availability after adding the process:\n ");
+	//memMap->Print();
+	//}
+
+
+}
+//*********************************************************************
+// End code changes by Gerald Frilot
+//*********************************************************************
+
 
 // *******************************************************************************************
 // Begin code changes by Gerald Frilot
@@ -509,16 +591,20 @@ void SExit(int status){
 			currentThread->Finish();
 			break;
 		default:
-			printf("This process returned a non standard exit status...STATUS: %d \n", status);
-			printf("Process: %s with PID: %d\n", currentThread->getName(), currentThread->getProcessId());
-			printf("Processes index in Memory: %d\n", currentThread->space->getMemIndex());
-			printf("Memory available before deallocation: \n");
-			memMap->Print();
-			printf("Memory available after deallocation: \n");
-			for(int i = currentThread->space->getMemIndex(); i < currentThread->space->getMemIndex() + currentThread->space->getNumPages(); i++) {
-					memMap->Clear(i);
-			}
-			memMap->Print();
+
+		/*
+			removed by Gerald Frilot for testing of  demand paging
+		*/
+			//printf("This process returned a non standard exit status...STATUS: %d \n", status);
+			//printf("Process: %s with PID: %d\n", currentThread->getName(), currentThread->getProcessId());
+			//printf("Processes index in Memory: %d\n", currentThread->space->getMemIndex());
+			//printf("Memory available before deallocation: \n");
+			//memMap->Print();
+			//printf("Memory available after deallocation: \n");
+			//for(int i = currentThread->space->getMemIndex(); i < currentThread->space->getMemIndex() + currentThread->space->getNumPages(); i++) {
+					//memMap->Clear(i);
+			//}
+			//memMap->Print();
 
 			temp = rootList;
 			while(temp != NULL) {
