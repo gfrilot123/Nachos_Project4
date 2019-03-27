@@ -282,7 +282,11 @@ ExceptionHandler(ExceptionType which)
 			puts("PageFaultException - Main\n");
 			//memMap->Mark(0);
 			frameNumber  = FrameFinder();
-			//printf("Free Frame %d\n", frameNumber);
+			if(frameNumber == -1)
+			{
+				currentThread->Yield();
+			}
+			printf("Free Frame %d\n", frameNumber);
 			setValid(frameNumber);
 			//SExit(1);
 			break;
@@ -412,7 +416,19 @@ void setValid(int frame)
 	printf("Page availability after adding the process: %d\n ", frame);
 	memMap->Print();
 
+	// Variables to char buffer
+	char* buffer = new char[256];
+
+	// Open process swap file based on currentID
+	char processId[100];
+	sprintf(processId, "%d.swap", currentId);
+
+	//OpenFile* openFile = fileSystem->Open(processId);
+
+	//openFile->ReadAt(buffer, 256, frame * 256);
+
 	//bzero(memory->mainMemory + (frame * 256), 256);
+
 
 	/*
 		for(int j=i+1; j<i+2;j++)

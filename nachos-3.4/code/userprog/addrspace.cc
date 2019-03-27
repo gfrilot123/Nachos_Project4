@@ -155,7 +155,8 @@ AddrSpace::AddrSpace(OpenFile *executable)
 				machine->RaiseException(exception, noffH.code.virtualAddr);
 			}
 			else {
-				executable->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
+				//executable->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
+				//openFile
 				//inFile Address = segment 40
 
 			}
