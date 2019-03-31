@@ -88,12 +88,13 @@ AddrSpace::AddrSpace(OpenFile *executable)
 		// Copies the user program into a swap files for reading
 		openFile->WriteAt(buffer, size, 0);
 		//printf("%d\n", executable->Length());
-		
+
 		// End code added by Joseph Aucoin
 
 
 
     executable->ReadAt((char *)&noffH, sizeof(noffH), 0);
+		//openFile->ReadAt((char *)&noffH, sizeof(noffH), 0);
     if ((noffH.noffMagic != NOFFMAGIC) && (WordToHost(noffH.noffMagic) == NOFFMAGIC))
     	SwapHeader(&noffH);
 		if(noffH.noffMagic != NOFFMAGIC) {
@@ -108,9 +109,6 @@ AddrSpace::AddrSpace(OpenFile *executable)
 						// to leave room for the stack
     numPages = divRoundUp(size, PageSize);
     size = numPages * PageSize;
-
-		//char* buffer;
-		//openFile->Write(buffer, executable->Length());
 
 		if(numPages > NumPhysPages) {
 			printf("The desired user program is bigger than physical memory can accept without virtual memory. Exiting\n");
