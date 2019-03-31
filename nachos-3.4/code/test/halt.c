@@ -13,7 +13,7 @@
 #include "syscall.h"
 
 int a;
-int b;
+int b; 
 int c;
 
 int

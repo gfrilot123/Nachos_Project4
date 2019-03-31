@@ -18,7 +18,6 @@
 #include "bitmap.h"
 #include "synch.h"
 #include "../userprog/IPT.h"
-#include "../userprog/OuterTable.h"
 
 // Initialization and cleanup routines
 extern void Initialize(int argc, char **argv); 	// Initialization,
@@ -39,20 +38,12 @@ extern IPT** IPTframe;
 extern bool pageFlag;
 extern BitMap *memMap;				//Bitmap to keep track of memory use
 
-
-
 #ifdef USER_PROGRAM
 #include "machine.h"
 extern Machine* machine;	// user program memory and registers
 extern List* activeThreads;	// active thread list for process management
 extern List* pageList;  // Added by Gerald  Frilot for demand paging.
 extern int threadID;	// unique process id
-
-// Begin Code added by Joseph Aucoin
-
-extern OuterTable** pointTable;
-// End code added by Joseph Aucoin
-
 #endif
 
 #ifdef FILESYS_NEEDED 		// FILESYS or FILESYS_STUB

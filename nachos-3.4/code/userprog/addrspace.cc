@@ -89,15 +89,11 @@ AddrSpace::AddrSpace(OpenFile *executable)
 	/**
 				Begin code changes by Gerald Frilot
 				We want demand paging.
-				One page at a time until the CPU requests the next one so we can
+				One page at a time until the CPU requests the next one so we can 
 				fit more in memory.
 
 
 		*/
-	//OuterTable* tablePointer = pointTable;
-	//pointTable[currentThread->getID()%4].pageTable = (void*) pageTable;
-
-	//TranslationEntry* pointTable[4];
 
 	pageTable = new TranslationEntry[numPages];
 	for (i = 0; i < numPages; i++)
@@ -122,9 +118,9 @@ AddrSpace::AddrSpace(OpenFile *executable)
 		//  fileSwapper is an Openfile var that is declared in the addspace header that gets assigned to Open of the swapArray
 		//  To create a file, you need a name for it and a size.
 		//*********************************************************************************************************************
-		char swapArray[20] = {NULL};
+		char swapArray[10] = {NULL};
 
-		snprintf(swapArray, 10, "%i.swap", currentThread->getID()); // Does not allow overflow
+		snprintf(swapArray, 10, "%i", currentThread->getID()); // Does not allow overflow
 
 		bool fileCreation = fileSystem->Create(swapArray, size);
 		fileSwapper = fileSystem->Open(swapArray);
@@ -133,8 +129,8 @@ AddrSpace::AddrSpace(OpenFile *executable)
 		// Created by Gerald Frilot
 		// Two buffers created
 		// One of size noffH.code and another of size noffH.initdata
-		// The executable will read instructions at the beginning of the buffer to the
-		// size of the buffer at position
+		// The executable will read instructions at the beginning of the buffer to the 
+		// size of the buffer at position 
 		// The fileswapper pointer is writing at the buffer of code size at 0th position.
 		// Init data position happens at noffh.code.size
 		// The entire code size must be passed here so the CPU knows when to stop executing
@@ -253,10 +249,10 @@ void AddrSpace::RestoreState()
 	Swapwriting method receives a virtual address and an evict notice
 	It returns the virtual Location index used.
 	enter receives the specific pagetable index passed from virtualLocation
-	The fileswapper writes a virtual page in mainMemory physical location
+	The fileswapper writes a virtual page in mainMemory physical location 
 	256 bytes wide from the virtualLocations position
-	Writing the page to main memory first asigns a boolean flag named evict
-	ofr the page that needs to be replaced by a read.
+	Writing the page to main memory first asigns a boolean flag named evict 
+	ofr the page that needs to be replaced by a read. 
 	Return the virtual location for further analysis.
 
 */
@@ -281,11 +277,11 @@ int AddrSpace::swapWriting(int virtualLocation, bool evict)
 
 	Begin code by Gerald Frilot
 	Swapreading method takes in two parameters of type int and
-	Following an interrupt is an infinite loop that sends the CPU looking
-	for a match from its virtual address to a physical address with a valid bit set to true.
-	swapReading receives the virtual address and the swapfile pointer is responsible for
+	Following an interrupt is an infinite loop that sends the CPU looking 
+	for a match from its virtual address to a physical address with a valid bit set to true. 
+	swapReading receives the virtual address and the swapfile pointer is responsible for 
 	getting the data where it needs to be.
-
+	 
 
 */
 int AddrSpace::swapReading(int fromVirtualLocation, int PhysicalLocation)
