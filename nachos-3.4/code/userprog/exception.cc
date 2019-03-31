@@ -21,22 +21,19 @@
 // All rights reserved.  See copyright.h for copyright notice and limitation
 // of liability and disclaimer of warranty provisions.
 
-#include <stdio.h>        // FA98
+#include <stdio.h> // FA98
+#include <stdlib.h>
 #include "copyright.h"
 #include "system.h"
 #include "syscall.h"
-#include "addrspace.h"   // FA98
-#include "sysdep.h"   // FA98
-
+#include "addrspace.h" // FA98
+#include "sysdep.h"	// FA98
+#include "IPT.h"
 // begin FA98
 
-// ----------------------------------------------------------------------------
-// processCreator() function created for forking Join() method
-
-void processCreator(int arg);
 static int SRead(int addr, int size, int id);
 static void SWrite(char *buffer, int size, int id);
-
+Thread *getID(int toGet);
 
 // end FA98
 
@@ -63,34 +60,111 @@ static void SWrite(char *buffer, int size, int id);
 //	are in machine.h.
 //----------------------------------------------------------------------
 
-//---------------------------------------------------------------------
-// Global variables declared for switch cases Exec() and Join()
+Thread *getID(int toGet) // Goes through the list of active threads and returns one linked with the passed-in ID.
+{
+	Thread *tempThread = NULL;
+	Thread *toReturn = NULL;
+	bool found = false;
+	int size = activeThreads->getSize();
+	for (int i = 0; i < size; i++)
+	{
+		tempThread = (Thread *)activeThreads->Remove(); // Pop the top thread off.
+		if (tempThread->getID() == toGet)				// If it's what we're looking for...
+		{
+			toReturn = tempThread;
+			found = true; // Trip the flag variable, and store the pointer of the thread.
+		}
+		activeThreads->Append(tempThread); // Put it back onto the active list.
+	}
+	if (!found)
+		return NULL;
+	else
+		return toReturn;
+}
+
+void processCreator(int arg) // Used when a process first actually runs, not when it is created.
+{
+	currentThread->space->InitRegisters(); // set the initial register values
+	currentThread->space->RestoreState();  // load page table register
+
+	if (threadToBeDestroyed != NULL)
+	{
+		delete threadToBeDestroyed;
+		threadToBeDestroyed = NULL;
+	}
+
+	machine->Run(); // jump to the user progam
+	ASSERT(FALSE);  // machine->Run never returns;
+}
+
+/*
+	Begin code changes by Gerald Frilot
+	An int name page is created and requests an available page number from the 
+	memMap. If replacechoice from the command line == 0 just do a random memMap 
+	find and return the first empty slot
+	Otherwise loop through all the mainmemory and return the first NULL frame.
+	If all slots are used return -1. 
+*/
+
+int getAvailablePageNum()
+{
+	if (replaceChoice == 0)
+	{
+		return memMap->Find();
+	}
+
+	for (int i = 0; i < NumPhysPages; i++)
+	{
+		if (IPTframe[i] == NULL)
+			return i;
+	}
+	return -1;
+}
 
 
-int i,j,k,buffAdd;
-AddrSpace *space;
-char *file;
-Thread *t;
-processNode * newProcess;
+/*
+	Begin code changes by Gerald Frilot 
+	This is just a quick way of printing the demand paging request if replaceChoice at
+	command line ==0.
+	If its not 0 then print a refeence to NULL frames with a 0,1 otherwise. 
+*/
+void printBitmap()
+{
+	if (replaceChoice == 0)
+	{
+		memMap->Print(); // Useful!
+	}
+	else
+	{
+		for (int i = 0; i < NumPhysPages; i++)
+		{
+			if (IPTframe[i] == NULL)
+				printf("0 ");
+			else
+			{
+				printf("1 ");
+			}
+		}
+		printf("\n");
+	}
+}
 
-//Predefined
-void
-ExceptionHandler(ExceptionType which)
+void ExceptionHandler(ExceptionType which)
 {
 	int type = machine->ReadRegister(2);
+
 	int arg1 = machine->ReadRegister(4);
 	int arg2 = machine->ReadRegister(5);
 	int arg3 = machine->ReadRegister(6);
-	int addressPg = machine->ReadRegister(39);
 	int Result;
+	int i, j;
+	char *ch = new char[500];
 
-
-	char *ch = new char [500];
-	switch ( which )
+	switch (which)
 	{
-	case NoException :
+	case NoException:
 		break;
-	case SyscallException :
+	case SyscallException:
 
 		// for debugging, in case we are jumping into lala-land
 		// Advance program counters.
@@ -98,475 +172,379 @@ ExceptionHandler(ExceptionType which)
 		machine->registers[PCReg] = machine->registers[NextPCReg];
 		machine->registers[NextPCReg] = machine->registers[NextPCReg] + 4;
 
-		switch ( type )
+		switch (type)
 		{
 
-//Funtionaility provided by Chau Cao to extend on Halt
-		case SC_Halt :
-			DEBUG('t',"Shutdown, initiated by user program.\n");
-			//SExit(0);
-			printf("\nShutdown initiated by user program. PID: %d\n", currentThread->getProcessId());
-			printf("Memory available before deallocation: \n");
-			memMap->Print();
-			printf("\nMemory available after deallocation: \n");
-			for(int i = currentThread->space->getMemIndex(); i < currentThread->space->getMemIndex() + currentThread->space->getNumPages(); i++) {
-					memMap->Clear(i);
-			}
-			memMap->Print();
+		case SC_Halt:
+			printf("SYSTEM CALL: Halt, called by thread %i.\n", currentThread->getID());
+			DEBUG('t', "Shutdown, initiated by user program.\n");
 			interrupt->Halt();
 			break;
-//*************************************************************************************************
-// SC_Exit method implemented by built in user function Exit()
-//************************************************************************************************
-		case SC_Exit :
 
-
-				//Begin code changes by Chau Cao
-					printf("\nExit() syscall received by process number: %d\n",currentThread->getProcessId());
-					printf("Process completed with Exit() value: %d \n",arg1);
-					SExit(arg1);
-				//End code changes by Chau Cao
-
-		break;
-
-//********************************************************************************************
-// Begin code changes by Gerald Frilot
-// SC_Exec switch case call funtion Exec() with a filename parameter and Exec() Forks a thread to
-// method processCreator()
-//************************************************************************************************
-
-//Edits provided by Chau Cao
-		case SC_Exec :
-
-
-			printf("\nEXEC() syscall invoked in ");
-			printf(currentThread->getName());
-			printf(" by ");
-			buffAdd=machine->ReadRegister(4);
-			if(buffAdd!=0)
-			printf("PID :%d\n", currentThread->getProcessId());
-
-
-			file = new char[100];
-			if(!machine->ReadMem(buffAdd,1,&arg1))return;
-			i=0;
-
-			while(arg1!=0)
+		case SC_Read:
+			if (arg2 <= 0 || arg3 < 0)
 			{
-				file[i]=(char)arg1;
-				buffAdd+=1;
-				i++;
-
-				if(!machine->ReadMem(buffAdd,1,&arg1))return;
-			}
-
-			file[i]=(char)0;
-			Exec(file);
-			delete [] file;
-			break;
-
-//Functionaility implemented by Chau Cao
-		case SC_Join:
-
-
-				printf("\nJoin() is being called by PID: %d on PID: %d\n", currentThread->getProcessId(), arg1);
-				Join(arg1);
-				break;
-
-//Functionaility implemented by Chau Cao
-	 case SC_Yield:
-
-			if(type==10)
-			{
-			printf("\nYield() syscall received by PID: %d ", currentThread->getProcessId());
-			printf("\n");
-	 		Yield();
-			}
-	 		break;
-
-		// Predefined
-		case SC_Read :
-			if (arg2 <= 0 || arg3 < 0){
 				printf("\nRead 0 byte.\n");
 			}
 			Result = SRead(arg1, arg2, arg3);
 			machine->WriteRegister(2, Result);
-			DEBUG('t',"Read %d bytes from the open file(OpenFileId is %d)",
-			arg2, arg3);
+			DEBUG('t', "Read %d bytes from the open file(OpenFileId is %d)",
+				  arg2, arg3);
 			break;
-		// Predefined
-		case SC_Write :
-			for (j = 0; ; j++) {
-				if(!machine->ReadMem((arg1+j), 1, &i))
-					j=j-1;
-				else{
-					ch[j] = (char) i;
+
+		case SC_Write:
+			for (j = 0;; j++)
+			{
+				if (!machine->ReadMem((arg1 + j), 1, &i))
+					j = j - 1;
+				else
+				{
+					ch[j] = (char)i;
 					if (ch[j] == '\0')
 						break;
 				}
 			}
-			if (j == 0){
+			if (j == 0)
+			{
 				printf("\nWrite 0 byte.\n");
 				// SExit(1);
-			} else {
+			}
+			else
+			{
 				DEBUG('t', "\nWrite %d bytes from %s to the open file(OpenFileId is %d).", arg2, ch, arg3);
 				SWrite(ch, j, arg3);
 			}
 			break;
+		case SC_Exec: // Executes a user process inside another user process.
+		{
+			printf("SYSTEM CALL: Exec, called by thread %i.\n", currentThread->getID());
+
+			// Retrieve the address of the filename
+			int fileAddress = arg1; // retrieve argument stored in register r4
+
+			// Read file name into the kernel space
+			char *filename = new char[100];
+
+			for (int m = 0; m < 100; m++)
+				filename[m] = NULL;
+
+			// Free up allocation space and get the file name
+			if (!machine->ReadMem(fileAddress, 1, &j))
+				return;
+			i = 0;
+
+			while (j != 0)
+			{
+				filename[i] = (char)j;
+				fileAddress += 1;
+				i++;
+				if (!machine->ReadMem(fileAddress, 1, &j))
+					return;
+			}
+			// Open File
+			OpenFile *executable = fileSystem->Open(filename);
+
+			if (executable == NULL)
+			{
+				printf("Unable to open file %s\n", filename);
+				delete filename;
+				break;
+			}
+			delete filename;
+
+			// Calculate needed memory space
+			AddrSpace *space;
+			space = new AddrSpace(executable);
+			delete executable;
+			// Do we have enough space?
+			if (!currentThread->killNewChild) // If so...
+			{
+				Thread *execThread = new Thread("thread!"); // Make a new thread for the process.
+				execThread->space = space;					// Set the address space to the new space.
+				execThread->setID(threadID);				// Set the unique thread ID
+				activeThreads->Append(execThread);			// Put it on the active list.
+				machine->WriteRegister(2, threadID);		// Return the thread ID as our Exec return variable.
+				threadID++;									// Increment the total number of threads.
+				execThread->Fork(processCreator, 0);		// Fork it.
+			}
+			else // If not...
+			{
+				machine->WriteRegister(2, -1 * (threadID + 1)); // Return an error code
+				currentThread->killNewChild = false;			// Reset our variable
+			}
+			break; // Get out.
+		}
+		case SC_Join: // Join one process to another.
+		{
+			printf("SYSTEM CALL: Joined, called by thread %i.\n", currentThread->getID());
+			if (arg1 < 0) // If the thread was not properly created...
+			{
+				printf("ERROR: Trying to join process %i to process %i, which was not created successfully! Process %i continuing normally.\n", currentThread->getID(), -arg1, currentThread->getID()); // Return an error message, continue as normal.
+				break;
+			}
+
+			if (getID(arg1) != NULL) // If the thread exists...
+			{
+				if (!currentThread->isJoined) // And it's not already joined...
+				{
+					printf("Joining process %i with process %i.  Thread %i now shutting down.\n", getID(arg1)->getID(), currentThread->getID(), currentThread->getID()); // Inform the user.
+					getID(arg1)->setParent(currentThread);																												 // Set the process' parent to the current thread.
+					currentThread->isJoined = true;																														 // Let the parent know it has a child
+					(void)interrupt->SetLevel(IntOff);																													 // Disable interrupts for Sleep();
+					currentThread->Sleep();																																 // Put the current thread to sleep.
+					break;
+				}
+				else
+				{ // We've got an error message.
+					printf("ERROR: Trying to join process %i, which is already joined! Continuing normally.", currentThread->getID());
+					break;
+				}
+			}
+			else
+				printf("ERROR: Trying to a join process %i to nonexistant process %i! Process %i continuing normally.\n", currentThread->getID(), -arg1, currentThread->getID()); // Error message if the thread we're trying to join to doesn't exist for some reason.
+			break;
+		}
+		case SC_Exit: // Exit a process.
+		{
+			printf("SYSTEM CALL: Exit, called by thread %i.\n", currentThread->getID());
+			if (arg1 == 0) // Did we exit properly?  If not, show an error message.
+				printf("Process %i exited normally!\n", currentThread->getID());
+			else
+				printf("ERROR: Process %i exited abnormally!\n", currentThread->getID());
+
+			if (currentThread->space)
+			{ // Delete the used memory from the process.
+				if (replaceChoice != 0 )
+				{
+					for (int i = 0; i < NumPhysPages; i++)
+					{
+						if (IPTframe[i] == NULL) continue;
+						if (IPTframe[i]->thread->getID() != currentThread->getID())continue;
+						
+						delete IPTframe[i];
+						IPTframe[i] = NULL;
+
+					}
+				}
 
 
-			default :
-			printf("Not a valid syscall\n");
+			}
+			delete currentThread->space;
+			currentThread->Finish(); // Delete the thread.
 
 			break;
 		}
+		case SC_Yield: // Yield to a new process.
+		{
+			printf("SYSTEM CALL: Yield, called by thread %i.\n", currentThread->getID());
+
+			//Save the registers and yield CPU control.
+			currentThread->space->SaveState();
+			currentThread->Yield();
+			//When the thread comes back, restore its registers.
+			currentThread->space->RestoreState();
+
+			break;
+		}
+		default:
+			//Unprogrammed system calls end up here
+			printf("SYSTEM CALL: Unknown, called by thread %i.\n", currentThread->getID());
+			break;
+		} // Advance program counters, ends syscall switch
 		break;
 
-	// Predefined
-	//Begin Code Changes by Chau Cao
-	//Removed all assertions and exit gracefully
-	case ReadOnlyException :
-		puts ("ReadOnlyException");
+	case ReadOnlyException:
+		printf("ERROR: ReadOnlyException, called by thread %i.\n", currentThread->getID());
 		if (currentThread->getName() == "main")
-		//ASSERT(FALSE);  //Not the way of handling an exception.
-		SExit(1);
+			ASSERT(FALSE);		  //Not the way of handling an exception.
+		if (currentThread->space) // Delete the used memory from the process.
+			delete currentThread->space;
+		currentThread->Finish(); // Delete the thread.
 		break;
-	case BusErrorException :
-		puts ("BusErrorException");
+	case BusErrorException:
+		printf("ERROR: BusErrorException, called by thread %i.\n", currentThread->getID());
 		if (currentThread->getName() == "main")
-		ASSERT(FALSE);  //Not the way of handling an exception.
-		SExit(1);
+			ASSERT(FALSE);		  //Not the way of handling an exception.
+		if (currentThread->space) // Delete the used memory from the process.
+			delete currentThread->space;
+		currentThread->Finish(); // Delete the thread.
 		break;
-	case AddressErrorException :
-		puts ("Pointer out of Bounds");
+	case AddressErrorException:
+		printf("ERROR: AddressErrorException, called by thread %i.\n", currentThread->getID());
 		if (currentThread->getName() == "main")
-		ASSERT(FALSE);  //Not the way of handling an exception.
-		SExit(-1);
-		//SExit(1);
+			ASSERT(FALSE);		  //Not the way of handling an exception.
+		if (currentThread->space) // Delete the used memory from the process.
+			delete currentThread->space;
+		currentThread->Finish(); // Delete the thread.
 		break;
-	case OverflowException :
-		puts ("OverflowException");
+	case OverflowException:
+		printf("ERROR: OverflowException, called by thread %i.\n", currentThread->getID());
 		if (currentThread->getName() == "main")
-		ASSERT(FALSE);  //Not the way of handling an exception.
-		SExit(1);
+			ASSERT(FALSE);		  //Not the way of handling an exception.
+		if (currentThread->space) // Delete the used memory from the process.
+			delete currentThread->space;
+		currentThread->Finish(); // Delete the thread.
 		break;
-	case IllegalInstrException :
-		puts ("IllegalInstrException");
+	case IllegalInstrException:
+		printf("ERROR: IllegalInstrException, called by thread %i.\n", currentThread->getID());
 		if (currentThread->getName() == "main")
-		ASSERT(FALSE);  //Not the way of handling an exception.
-		SExit(1);
+			ASSERT(FALSE);		  //Not the way of handling an exception.
+		if (currentThread->space) // Delete the used memory from the process.
+			delete currentThread->space;
+		currentThread->Finish(); // Delete the thread.
 		break;
-	case NumExceptionTypes :
-		puts ("NumExceptionTypes");
+	case NumExceptionTypes:
+		printf("ERROR: NumExceptionTypes, called by thread %i.\n", currentThread->getID());
 		if (currentThread->getName() == "main")
-		ASSERT(FALSE);  //Not the way of handling an exception.
-		SExit(1);
+			ASSERT(FALSE);		  //Not the way of handling an exception.
+		if (currentThread->space) // Delete the used memory from the process.
+			delete currentThread->space;
+		currentThread->Finish(); // Delete the thread.
 		break;
+
+	/*
+	   Page Fault Exception added by Gerald Frilot
+	   On a failed load we initialize the virtualPageNumber with  register 39 value.
+	   A series of print statements follow to show what is going on behind the scenes.
+	   Depending on what option was passed from command line, we update page with a local 
+	   function call to getavailablePageNum()
+	   -1 means all pages are being used, begin page swapping techiques
+	   if replacement choice was 1 we do a FIFO operation
+	   if replacement choice was 2 we doa Random operation
+	   Do noting otherwise but gracefully.
+
+	   ---------------Methods declared locally begin at line 109
+
+	*/
 
 	case PageFaultException:
-			//puts ("PageFaultException");
-			printf("Page fault has occurred \n");
-			//OpenFile* openFile = fileSystem->Open("0.swap");
-			//space->markMemory();
-			if (currentThread->getName() == "main")
-					ASSERT(FALSE);
-			SExit(1);
-			break;
+		int virtualPageNumer;
+		virtualPageNumer = machine->ReadRegister(39) / PageSize;
+		printf("virtual page num:%d%s ", virtualPageNumer, "\n");
+		int page;
+		printf("\n");
+		puts(" Page Fault Exception - Miss ");
 
-		default :
-		     printf("Unexpected user mode exception %d %d\n", which, type);
-		      if (currentThread->getName() == "main")
-		      //ASSERT(FALSE);
-		      SExit(1);
+		printBitmap();
+		printf(" Operating System Alert! Fetching Page.\n ");
+		printf("Current Thread has %d%s ", currentThread->space->numPages, " pages that are invalid!\n");
+		printf(" Virtual address requested %d%s", machine->ReadRegister(39), "\n ");
+
+		
+		page = getAvailablePageNum();
+
+		if (page == -1)
+		{
+			printf("All frames are currently in use! Swapping in progress....\n");
+
+			if (replaceChoice == 1)
+			{
+				printf("FIFO!\n");
+				static int fifoPage = 0;
+				page = fifoPage;
+				fifoPage++;
+				if (fifoPage == NumPhysPages)
+				{
+					fifoPage = 0;
+				}
+			}
+			else if (replaceChoice == 2)
+			{
+				printf("RANDOM!\n");
+				page = Random() % NumPhysPages;
+			}
+			else
+			{
+				printf("NOPE!\n");
+				printf("Exit in progress.........................\n");
+				ASSERT(FALSE);
+			}
+		}
+		printBitmap();
+
+		
+		if (IPTframe[page])
+		{
+			IPTframe[page]->thread->space->swapWriting(IPTframe[page]->vPageNumber, true);
+
+
+			delete IPTframe[page];
+			IPTframe[page] = NULL;
+		}
+
+		IPTframe[page] = new IPT();
+		IPTframe[page]->thread = currentThread;
+		IPTframe[page]->vPageNumber = virtualPageNumer;
+
+		IPTframe[page]->thread->space->swapReading(IPTframe[page]->vPageNumber, page);
+
+		printf("The value of page for the swapReading method is :%d%s", page, "\n");
+	
+		//exit(0);
 		break;
-		//end code changes by Chau Cao
+
+	default:;
+		//      printf("Unexpected user mode exception %d %d\n", which, type);
+		//      if (currentThread->getName() == "main")
+		//      ASSERT(FALSE);
+		//      SExit(1);
+		break;
 	}
-	delete [] ch;
+	delete[] ch;
 }
 
-//Predefined
-static int SRead(int addr, int size, int id)  //input 0  output 1
+static int SRead(int addr, int size, int id) //input 0  output 1
 {
-	char buffer[size+10];
-	int num,Result;
+	char buffer[size + 10];
+	int num, Result;
 
 	//read from keyboard, try writing your own code using console class.
 	if (id == 0)
 	{
-		scanf("%s",buffer);
+		scanf("%s", buffer);
 
-		num=strlen(buffer);
-		if(num>(size+1)) {
+		num = strlen(buffer);
+		if (num > (size + 1))
+		{
 
-			buffer[size+1] = '\0';
-			Result = size+1;
+			buffer[size + 1] = '\0';
+			Result = size + 1;
 		}
-		else {
-			buffer[num+1]='\0';
+		else
+		{
+			buffer[num + 1] = '\0';
 			Result = num + 1;
 		}
 
-		for (num=0; num<Result; num++)
-		{  machine->WriteMem((addr+num), 1, (int) buffer[num]);
+		for (num = 0; num < Result; num++)
+		{
+			machine->WriteMem((addr + num), 1, (int)buffer[num]);
 			if (buffer[num] == '\0')
-			break; }
+				break;
+		}
 		return num;
-
 	}
 	//read from a unix file, later you need change to nachos file system.
 	else
 	{
-		for(num=0;num<size;num++){
-			Read(id,&buffer[num],1);
-			machine->WriteMem((addr+num), 1, (int) buffer[num]);
-			if(buffer[num]=='\0') break;
+		for (num = 0; num < size; num++)
+		{
+			Read(id, &buffer[num], 1);
+			machine->WriteMem((addr + num), 1, (int)buffer[num]);
+			if (buffer[num] == '\0')
+				break;
 		}
 		return num;
 	}
 }
 
-
-//Predefined
 static void SWrite(char *buffer, int size, int id)
 {
 	//write to terminal, try writting your own code using console class.
 	if (id == 1)
-	printf("%s", buffer);
+		printf("%s", buffer);
 	//write to a unix file, later you need change to nachos file system.
 	if (id >= 2)
-	WriteFile(id,buffer,size);
+		WriteFile(id, buffer, size);
 }
-
-//********************************************************************************************
-//Begin code changes by Gerald Frilot
-// Method processCreator() receives an int argument and is forked by both cases in Exec() depending
-// on what method forked it first for now.
-//***************************************************************************************************
-void processCreator(int arg)
-{
-
-	Yield();//<----This line added by Chau Cao
-	currentThread->space->InitRegisters();
-	currentThread->space->RestoreState();
-	machine->Run();
-
-
-
-	ASSERT(FALSE);
-}
-
-// *******************************************************************************************
-// Begin code changes by Gerald Frilot
-// Method Exec() receives a file name and returns an int (SpaceId) value
-// Contains a switch case that determines what process has rights to the Exec() call first for now
-//*************************************************************************************************
-
-//Code Editions added by Chau Cao to incoporate into global process list
-//Process id functionalities added by Chau Cao
-int Exec(char *name)
-{
-	printf("filename : ( %s ",name);
-	printf(" )");
-	printf("\n");
-	t = new Thread(name);
-	newProcess = new processNode; //added by Chau Cao
-	OpenFile * executable = fileSystem->Open(name);
-	interrupt->SetLevel(IntOff);
-	space = new AddrSpace(executable);
-	t->space=space;
-	delete executable;
-	t->Fork(processCreator, currentId);
-
-	//Following are additions added by Chau Cao
-	newProcess->process = t;
-	newProcess->PID = currentId;
-	newProcess->parentId = -1;
-	newProcess->next = NULL;
-	processList->next = newProcess;
-	processList = newProcess;
-	currentId++;
-	machine->WriteRegister(2, processList->PID);
-	//end code changes by Chau Cao
-
-	interrupt->SetLevel(IntOn);
-	return processList->PID;
-}
-
-//Begin Code Changes by Chau Cao
-//Join function. References Global list
-//Sets calling thread to sleep until child returns
-int Join(int id)
-{
-	processNode * temp;
-	temp = rootList;
-	bool set = false;
-	if(temp == NULL) {
-		printf("Temp is null\n");
-		SExit(1);
-	}
-	while(set != true) {
-		if(temp==NULL)
-		{
-
-		SExit(1);
-		}
-		else
-		{
-
-
-		if(temp->PID == id){
-			temp->parentId = currentThread->getProcessId();
-			set = true;
-		}
-		else {
-			temp = temp->next;
-		}
-	}
-
-	}
-	currentThread->space->SaveState();
-	interrupt->SetLevel(IntOff);
-	currentThread->Sleep();
-	interrupt->SetLevel(IntOn);
-	currentThread->space->RestoreState();
-}
-
-//Exit Functionality Provided by Chau Cao
-//Switch case based on exit status provided to function
-// ----case 0 ----
-//	Program ended normally
-//	Deallocates the memory used by the exiting process
-//	Pulls up the exiting proccesses struct and checks if it has a parent
-//	Searches for parent node with id found
-//	If the parent isn't found, prvoide error
-//----case 1 ----
-//	Fatal memory error. Exits process
-//----case -1----
-//	Address Space Error. Exits process
-//----Default Case----
-// Generic possible non normal returns
-void SExit(int status){
-	int x = 0;
-	processNode* temp;
-	processNode* notherTemp;
-	switch (status) {
-		case 0:
-			interrupt->SetLevel(IntOff);
-			printf("The program exited normally. Exiting... \n");
-			x = currentThread->space->getMemIndex();
-			printf("Processes index in Memory: %d\n", x);
-			printf("\nMemory available before deallocation: \n");
-			memMap->Print();
-			printf("\nMemory available after deallocation: \n");
-			while(x < currentThread->space->getMemIndex() + currentThread->space->getNumPages())
-			{
-				memMap->Clear(x);
-				x++;
-			}
-			memMap->Print();
-
-			temp = rootList;
-			while(temp != NULL) {
-				if(temp->PID == currentThread->getProcessId())
-				{
-					break;
-				}
-				else {
-					temp = temp->next;
-				}
-			}
-
-			notherTemp = rootList;
-			if(temp->parentId > -1)
-			{
-				while(notherTemp != NULL) {
-					if(notherTemp->PID == temp->parentId){
-						break;
-					}
-					notherTemp = notherTemp->next;
-				}
-				if(notherTemp != NULL) {
-					if(notherTemp->process != NULL) {
-						notherTemp->process->setStatus(READY);
-						scheduler->ReadyToRun(notherTemp->process);
-					}
-					else {
-						printf("The parent process has already finished running...\n");
-					}
-				}
-				else {
-					printf("End of global process structure reached. Could not locate Parent... \n");
-				}
-			}
-			currentThread->Finish();
-			break;
-		case 1:
-			printf("Fatal Exception Thrown. Exiting nachos...\n");
-			currentThread->Finish();
-			break;
-		case -1:
-			printf("Exiting process prior to loading into memory...\n");
-			currentThread->Finish();
-			break;
-		default:
-			printf("This process returned a non standard exit status...STATUS: %d \n", status);
-			printf("Process: %s with PID: %d\n", currentThread->getName(), currentThread->getProcessId());
-			printf("Processes index in Memory: %d\n", currentThread->space->getMemIndex());
-			printf("Memory available before deallocation: \n");
-			memMap->Print();
-			printf("Memory available after deallocation: \n");
-			for(int i = currentThread->space->getMemIndex(); i < currentThread->space->getMemIndex() + currentThread->space->getNumPages(); i++) {
-					memMap->Clear(i);
-			}
-			memMap->Print();
-
-			temp = rootList;
-			while(temp != NULL) {
-				if(temp->PID == currentThread->getProcessId())
-				{
-					break;
-				}
-				else {
-					temp = temp->next;
-				}
-			}
-
-			notherTemp = rootList;
-			if(temp->parentId > -1)
-			{
-				while(notherTemp != NULL) {
-					if(notherTemp->PID == temp->parentId){
-						break;
-					}
-					notherTemp = notherTemp->next;
-				}
-				if(notherTemp != NULL) {
-					if(notherTemp->process != NULL) {
-						notherTemp->process->setStatus(READY);
-						scheduler->ReadyToRun(notherTemp->process);
-					}
-					else {
-						printf("The parent process has already finished running...\n");
-					}
-				}
-				else {
-					printf("End of global process structure reached. Could not locate Parent... \n");
-				}
-			}
-			currentThread->Finish();
-	}
-}
-
-//Code Addition by Chau Cao
-//Yield system call functionality
-//Saves user state and calls thread->Yield
-//On return restores user state
-void Yield() {
-	//currentThread->space->SaveState();
-	currentThread->SaveUserState();
-	currentThread->Yield();
-	currentThread->space->RestoreState();
-	currentThread->RestoreUserState();
-}
-
 // end FA98

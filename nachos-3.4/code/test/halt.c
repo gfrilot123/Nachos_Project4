@@ -12,28 +12,18 @@
 
 #include "syscall.h"
 
+int a;
+int b;
+int c;
+
 int
 main()
 {
 
-// Note for chau when there is not enough memory it doesn't properly deallocate the call
-// Begin code added by Joseph Aucoin
-/*
-    int i;
-    for (i = 0; i < 10; i++)
-    {
-        // Calls halt to run if memory is available
-        Exec("../test/halt");
-        if(i == 2 || i == 4 || i == 6 || i == 8 || i == 10)
-        {
-          Exit(0);
-        }
-    }
-*/
-// End code added by Joseph Aucoin
-
-    Halt();
-    Exit(0);
-    //Join(Exec("../test/halt"));
+a=2;
+b=2;
+c=a+b;
+Join(Exec("../test/sort"));
+Exit(0);
     /* not reached */
 }

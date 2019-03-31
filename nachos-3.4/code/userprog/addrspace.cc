@@ -18,11 +18,9 @@
 #include "copyright.h"
 #include "system.h"
 #include "addrspace.h"
-#include "syscall.h"
 #include "noff.h"
-#ifdef HOST_SPARC
-#include <strings.h>
-#endif
+#include "sysdep.h"
+#include "translate.h"
 
 //----------------------------------------------------------------------
 // SwapHeader
@@ -32,7 +30,7 @@
 //----------------------------------------------------------------------
 
 static void
-SwapHeader (NoffHeader *noffH)
+SwapHeader(NoffHeader *noffH)
 {
 	noffH->noffMagic = WordToHost(noffH->noffMagic);
 	noffH->code.size = WordToHost(noffH->code.size);
@@ -63,158 +61,106 @@ SwapHeader (NoffHeader *noffH)
 
 AddrSpace::AddrSpace(OpenFile *executable)
 {
-		if(executable == NULL)
+
+	NoffHeader noffH;
+	unsigned int i, size, pAddr, counter;
+	space = false;
+
+	executable->ReadAt((char *)&noffH, sizeof(noffH), 0);
+	if ((noffH.noffMagic != NOFFMAGIC) &&
+			(WordToHost(noffH.noffMagic) == NOFFMAGIC))
+		SwapHeader(&noffH);
+	ASSERT(noffH.noffMagic == NOFFMAGIC);
+
+	// how big is address space?
+	size = noffH.code.size + noffH.initData.size + noffH.uninitData.size + UserStackSize; // we need to increase the size
+	// to leave room for the stack
+	numPages = divRoundUp(size, PageSize);
+	size = numPages * PageSize;
+
+	// Print statements added here to direct the flow of traffic
+	printf(" Main memory holds %d%s ", NumPhysPages, " pages.\n");
+	printf("The current process uses %d%s ", numPages, " pages total.\n");
+	printf("One page in main memory is  %d%s ", PageSize, " bytes long.\n");
+	printf("The total page size for the process being executed is  %d%s", size, " bytes long.\n");
+
+	space = true;
+
+	/**
+				Begin code changes by Gerald Frilot
+				We want demand paging.
+				One page at a time until the CPU requests the next one so we can
+				fit more in memory.
+
+
+		*/
+	//OuterTable* tablePointer = pointTable;
+	//pointTable[currentThread->getID()%4].pageTable = (void*) pageTable;
+
+	//TranslationEntry* pointTable[4];
+
+	pageTable = new TranslationEntry[numPages];
+	for (i = 0; i < numPages; i++)
+	{
+		pageTable[i].virtualPage = i; // for now, virtual page # = phys page #
+		pageTable[i].physicalPage = -1;
+		//**********************************************
+		// VALID BIT SET TO FALSE HERE BY GERALD FRILOT
+		//**********************************************
+		pageTable[i].valid = FALSE;
+		pageTable[i].use = FALSE;
+		pageTable[i].dirty = FALSE;
+		pageTable[i].readOnly = FALSE; // if the code segment was entirely on
+																	 // a separate page, we could set its
+																	 // pages to be read-only
+
+		//*******************************************************************************************************************
+		//  Created by Gerald Frilot
+		//  Created a char array of size 10 elements
+		// 	snprintf receives an array ,size of the array , and a string following that is placed into the array
+		//  Instantiated a boolean var equal to the Creation of a global file system pointer to the char array and its size
+		//  fileSwapper is an Openfile var that is declared in the addspace header that gets assigned to Open of the swapArray
+		//  To create a file, you need a name for it and a size.
+		//*********************************************************************************************************************
+		char swapArray[20] = {NULL};
+
+		snprintf(swapArray, 10, "%i.swap", currentThread->getID()); // Does not allow overflow
+
+		bool fileCreation = fileSystem->Create(swapArray, size);
+		fileSwapper = fileSystem->Open(swapArray);
+
+		//****************************************************************************************************
+		// Created by Gerald Frilot
+		// Two buffers created
+		// One of size noffH.code and another of size noffH.initdata
+		// The executable will read instructions at the beginning of the buffer to the
+		// size of the buffer at position
+		// The fileswapper pointer is writing at the buffer of code size at 0th position.
+		// Init data position happens at noffh.code.size
+		// The entire code size must be passed here so the CPU knows when to stop executing
+		// Fragments are placed into mainmemory in the size of 256 bytes wide.
+		// Executable reads first and an interrupt is triggered.
+		// The fileswapper pointer takes control and assists during the interrupts.
+		//****************************************************************************************************
+
+		if (noffH.code.size > 0)
 		{
-			printf("Executable is null. Exiting\n");
-			SExit(-1);
+
+			char *noffcode = new char[noffH.code.size];
+			//fileSwapper does a read from the buffer, this many bytes ,at position 0
+			executable->ReadAt(noffcode, noffH.code.size, noffH.code.inFileAddr);
+
+			//fileSwapper does a write to the buffer, this many bytes ,at position 0
+			fileSwapper->WriteAt(noffcode, noffH.code.size, 0);
 		}
-		NoffHeader noffH;
-		unsigned int i, size;
-		size = noffH.code.size + noffH.initData.size + noffH.uninitData.size
-			+ UserStackSize;
-	  // Code added by Joseph Aucoin
-		// Variables to store executable length and char buffer
-		//int execLength = executable->Length();
-		char* buffer = new char[size];
+		if (noffH.initData.size > 0)
+		{
 
-		// Creates process swap file based on currentID
-		char processId[100];
-		sprintf(processId, "%d.swap", currentId);
-		printf("%s\n",processId);
-
-		// Creation and opening of swap files
-		fileSystem->Create( processId , size);
-		OpenFile* openFile = fileSystem->Open(processId);
-		// Copies the user program into a swap files for reading
-		openFile->WriteAt(buffer, size, 0);
-		//printf("%d\n", executable->Length());
-
-		// End code added by Joseph Aucoin
-
-
-
-    executable->ReadAt((char *)&noffH, sizeof(noffH), 0);
-		//openFile->ReadAt((char *)&noffH, sizeof(noffH), 0);
-    if ((noffH.noffMagic != NOFFMAGIC) && (WordToHost(noffH.noffMagic) == NOFFMAGIC))
-    	SwapHeader(&noffH);
-		if(noffH.noffMagic != NOFFMAGIC) {
-			printf("There is a noff error with the desired user program. Exiting\n");
-			SExit(-1);//MAKE THIS MEANINGFUL
+			char *initNoffCode = new char[noffH.initData.size];
+			executable->ReadAt(initNoffCode, noffH.initData.size, noffH.initData.inFileAddr);
+			fileSwapper->WriteAt(initNoffCode, noffH.initData.size, noffH.code.size);
 		}
-    //ASSERT(noffH.noffMagic == NOFFMAGIC);
-
-// how big is address space?
-    size = noffH.code.size + noffH.initData.size + noffH.uninitData.size
-			+ UserStackSize;	// we need to increase the size
-						// to leave room for the stack
-    numPages = divRoundUp(size, PageSize);
-    size = numPages * PageSize;
-
-		if(numPages > NumPhysPages) {
-			printf("The desired user program is bigger than physical memory can accept without virtual memory. Exiting\n");
-			SExit(-1);//MAKE THIS MEANINGFUL
-		}
-    //ASSERT(numPages <= NumPhysPages);		// check we're not trying
-						// to run anything too big --
-						// at least until we have
-						// virtual memory
-    DEBUG('a', "Initializing address space, num pages %d, size %d\n",
-					numPages, size);
-// first, set up the translation
-    pageTable = new TranslationEntry[numPages];
-
-		//Begin Code Changes by Chau Cao
-
-		//Print out the bitmap before attempting to bring the user program into memory
-		if(memMap == NULL){
-			printf("CRITICAL ERROR: GLOBAL BITMAP IS NULL. HOW DID THIS HAPPEN?!\n");
-			SExit(-4);//legit don't know how this could happen but who knows
-		}
-		printf("Page availability before adding the process:\n ");
-		//memMap->setMarks();		//sets marks
-		memMap->Print();
-		memMap->setBestWorstDefault();
-
-		//check if the number of pages needed is greater than the number of available frames
-		//in memory. If numPages is greater, produce output stating that and Exit()
-		if(numPages > memMap->NumClear()) {
-			printf("There is not enough memeory available for the requested process\n");
-			SExit(-1);//MAKE THIS MEANINGFUL
-		}
-		//else assign the pageTable values for the Virtual Address and take available
-		//frames in main memory. Mark the appropriate bits as used.
-		else {
-			//**********Place Fit Alogorithm calls here and place memIndex equal to the return value************
-			switch (currentIdGlobal){
-					case 1:
-						printf("FIRST FIT\n");
-						memIndex = memMap->FirstFit(numPages, 0);
-					break;
-					case 2:
-						printf("BEST FIT\n");
-						memIndex = memMap->BestFit(numPages, 0, 999);
-					break;
-					case 3:
-						printf("WORST FIT\n");
-						memIndex = memMap->WorstFit(numPages, 0, 0);
-					break;
-					default:
-						printf("FIRST FIT\n");
-						memIndex = memMap->FirstFit(numPages, 0);
-					break;
-			}
-			//Following code changes by Chau Cao
-			if(memIndex == -1) {
-				printf("There is not a large enough contiguous block of memory for the requested process\n");
-				SExit(-1);
-				//Exit this gracefully pls
-			}
-			else {
-				setMemory();
-				//markMemory();
-			}
-
-		}
-
-		//Code changes by Chau Cao
-		//Calls OpenFile.ReadAt to pull the instructions and initData that needs to be
-		//	read into memory.
-		//The code instructions are read in and stored starting at memIndex
-		//the phyiscal address is determined by the physical page alloted to the page table
-
-		ExceptionType exception;
-		int physicalAddress;
-		//openFile->WriteAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
-    if (noffH.code.size > 0) {
-    	DEBUG('a', "Initializing code segment, at 0x%x, size %d\n",noffH.code.virtualAddr, noffH.code.size);
-			exception = addTranslate(noffH.code.virtualAddr, &physicalAddress, noffH.code.size, FALSE);
-			if (exception != NoException) {
-				machine->RaiseException(exception, noffH.code.virtualAddr);
-			}
-			else {
-			  //openFile->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
-				executable->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
-
-			}
-		}
-
-    if (noffH.initData.size > 0) {
-      DEBUG('a', "Initializing data segment, at 0x%x, size %d\n", noffH.initData.virtualAddr, noffH.initData.size);
-
-			exception = addTranslate(noffH.initData.virtualAddr, &physicalAddress, noffH.initData.size, FALSE);
-			if (exception != NoException) {
-				machine->RaiseException(exception, noffH.initData.virtualAddr);
-			}
-			//openFile->ReadAt(&(machine->mainMemory[physicalAddress]), noffH.code.size, noffH.code.inFileAddr);
-			executable->ReadAt(&(machine->mainMemory[physicalAddress]),noffH.initData.size, noffH.initData.inFileAddr);
-    }
-
-
-		//Print out the bitmap after allocating the user program
-		printf("Page availability after adding the process:\n");
-		memMap->Print();
-
-		//End changes by Chau Cao
+	}
 }
 
 //----------------------------------------------------------------------
@@ -222,118 +168,28 @@ AddrSpace::AddrSpace(OpenFile *executable)
 // 	Dealloate an address space.  Nothing for now!
 //----------------------------------------------------------------------
 
+//Because the initialization already zeroes out the memory to be used,
+//is it even necessary to clear out any garbage data during deallocation?
+
 AddrSpace::~AddrSpace()
 {
-   delete [] pageTable;
-}
+	// Only clear the memory if it was set to begin with
+	// which in turn only happens after space is set to true
 
-//addTranslate is a modified copy of the translate function from machine in ordering
-//to calculate physical address based on the virtual page table
-//Basically copied directly from translate and editted to work properly
-//Begin Code Changes by Chau Cao
-ExceptionType AddrSpace::addTranslate(int virtAddr, int* physAddr, int size, bool writing)
-{
-    int i;
-    unsigned int vpn, offset;
-    TranslationEntry *entry;
-    unsigned int pageFrame;
+	if (space)
+	{
+		if (replaceChoice == 0)
+		{
+			for (int i = 0; i < numPages; i++) // We need an offset of startPage + numPages for clearing.
 
-    DEBUG('a', "\tTranslate 0x%x, %s: ", virtAddr, writing ? "write" : "read");
+				if (pageTable[i].physicalPage != -1)
+					memMap->Clear(pageTable[i].physicalPage);
+		}
+		delete[] pageTable;
 
-// check for alignment errors
-    if (((size == 4) && (virtAddr & 0x3)) || ((size == 2) && (virtAddr & 0x1))){
-				DEBUG('a', "alignment problem at %d, size %d!\n", virtAddr, size);
-					return AddressErrorException;
-    }
-
-// calculate the virtual page number, and offset within the page,
-// from the virtual address
-    vpn = (unsigned) virtAddr / PageSize;
-    offset = (unsigned) virtAddr % PageSize;
-
-
-	entry = &pageTable[vpn];
-	if (entry == NULL) {				// not found
-    	    DEBUG('a', "*** no valid TLB entry found for this virtual page!\n");
-    	    return PageFaultException;		// really, this is a TLB fault,
-						// the page may be in memory,
-						// but not in the TLB
-    }
-
-    if (entry->readOnly && writing) {	// trying to write to a read-only page
-				DEBUG('a', "%d mapped read-only at %d in TLB!\n", virtAddr, i);
-				return ReadOnlyException;
-    }
-    pageFrame = entry->physicalPage;
-
-    // if the pageFrame is too big, there is something really wrong!
-    // An invalid translation was loaded into the page table or TLB.
-    if (pageFrame >= NumPhysPages) {
-			DEBUG('a', "*** frame %d > %d!\n", pageFrame, NumPhysPages);
-			return BusErrorException;
-    }
-    entry->use = TRUE;		// set the use, dirty bits
-    if (writing)
-		entry->dirty = TRUE;
-    *physAddr = pageFrame * PageSize + offset;
-    ASSERT((*physAddr >= 0) && ((*physAddr + size) <= MemorySize));
-    DEBUG('a', "phys addr = 0x%x\n", *physAddr);
-    return NoException;
-}
-//end code changes
-
-//setMemory function for address space constructor
-//Begin Code Changes by Chau Cao
-void AddrSpace::setMemory() {
-	//loops through the number of pages that need to be placed into main memory.
-	//Virtual Page in page table is just the current index.
-	//Physical Page: startIndex is the starting index of the found contiguous memory
-	//use this as the offset and increment by x while assigning the following.
-	//Mark the coinciding bit in memMap as used, and assign that location to Physical Page
-	//Call bzero on that location in mainMemory to clear that frame of size 256 for the
-	//	instructions being stored then break
-	//The assignemnts mimic the one provided in the base exception
-	int startIndex = memIndex;
-	printf("Index %d\n", memIndex);
-	for (int x = 0; x < numPages; x++) {
-		pageTable[x].virtualPage = x;
-		//MemMap needs to change to only mark when loading into memory
-		memMap->Mark(startIndex + x);
-		pageTable[x].physicalPage = startIndex + x;
-		bzero(machine->mainMemory + (startIndex * 256), 256);
-		pageTable[x].valid = true;
-		pageTable[x].use = false;
-		pageTable[x].dirty = false;
-		pageTable[x].readOnly = false;
+		memMap->Print();
 	}
 }
-//end code changes by Chau Cao
-
-
-// Begin code changes by Joseph Aucoin
-void AddrSpace::markMemory() {
-	// Marks the page table as invalid
-
-	int startIndex = memIndex;
-	printf("Index %d\n", memIndex);
-	for (int x = 0; x < numPages; x++) {
-		pageTable[x].virtualPage = x;
-		//MemMap needs to change to only mark when loading into memory
-		memMap->Mark(startIndex + x);
-		pageTable[x].physicalPage = startIndex + x;
-		bzero(machine->mainMemory + (startIndex * 256), 256);
-		pageTable[x].valid = TRUE;
-		pageTable[x].use = false;
-		pageTable[x].dirty = false;
-		pageTable[x].readOnly = false;
-	}
-}
-
-bool AddrSpace::getPage(int x)
-{
-	return pageTable[x].valid;
-}
-// End code changed by Joseph Aucoin
 
 //----------------------------------------------------------------------
 // AddrSpace::InitRegisters
@@ -344,27 +200,26 @@ bool AddrSpace::getPage(int x)
 //	will be saved/restored into the currentThread->userRegisters
 //	when this thread is context switched out.
 //----------------------------------------------------------------------
-void
-AddrSpace::InitRegisters()
+
+void AddrSpace::InitRegisters()
 {
-    int i;
+	int i;
 
-    for (i = 0; i < NumTotalRegs; i++) {
-			machine->WriteRegister(i, 0);
+	for (i = 0; i < NumTotalRegs; i++)
+		machine->WriteRegister(i, 0);
 
-		}
-    // Initial program counter -- must be location of "Start"
-    machine->WriteRegister(PCReg, 0);
+	// Initial program counter -- must be location of "Start"
+	machine->WriteRegister(PCReg, 0);
 
-    // Need to also tell MIPS where next instruction is, because
-    // of branch delay possibility
-    machine->WriteRegister(NextPCReg, 4);
+	// Need to also tell MIPS where next instruction is, because
+	// of branch delay possibility
+	machine->WriteRegister(NextPCReg, 4);
 
-   // Set the stack register to the end of the address space, where we
-   // allocated the stack; but subtract off a bit, to make sure we don't
-   // accidentally reference off the end!
-    machine->WriteRegister(StackReg, (numPages * PageSize) - 16);
-    DEBUG('a', "Initializing stack register to %d\n", numPages * PageSize - 16);
+	// Set the stack register to the end of the address space, where we
+	// allocated the stack; but subtract off a bit, to make sure we don't
+	// accidentally reference off the end!
+	machine->WriteRegister(StackReg, numPages * PageSize - 16);
+	DEBUG('a', "Initializing stack register to %d\n", numPages * PageSize - 16);
 }
 
 //----------------------------------------------------------------------
@@ -376,7 +231,8 @@ AddrSpace::InitRegisters()
 //----------------------------------------------------------------------
 
 void AddrSpace::SaveState()
-{}
+{
+}
 
 //----------------------------------------------------------------------
 // AddrSpace::RestoreState
@@ -388,16 +244,57 @@ void AddrSpace::SaveState()
 
 void AddrSpace::RestoreState()
 {
-    machine->pageTable = pageTable;
-    machine->pageTableSize = numPages;
+	machine->pageTable = pageTable;
+	machine->pageTableSize = numPages;
 }
 
-//Begin Code Changes by Chau Cao
-//Helper functions to return private variables
-int AddrSpace::getNumPages() {
-	return numPages;
+/*
+	Begin code by Gerald Frilot
+	Swapwriting method receives a virtual address and an evict notice
+	It returns the virtual Location index used.
+	enter receives the specific pagetable index passed from virtualLocation
+	The fileswapper writes a virtual page in mainMemory physical location
+	256 bytes wide from the virtualLocations position
+	Writing the page to main memory first asigns a boolean flag named evict
+	ofr the page that needs to be replaced by a read.
+	Return the virtual location for further analysis.
+
+*/
+int AddrSpace::swapWriting(int virtualLocation, bool evict)
+{
+	TranslationEntry enter;
+
+	enter = pageTable[virtualLocation];
+	fileSwapper->WriteAt(&(machine->mainMemory[enter.physicalPage * PageSize]),
+											 PageSize, virtualLocation * PageSize);
+
+	if (evict)
+	{
+		enter.physicalPage = -1;
+		enter.valid = FALSE;
+	}
+
+	return virtualLocation;
 }
-int AddrSpace::getMemIndex() {
-	return memIndex;
+
+/*
+
+	Begin code by Gerald Frilot
+	Swapreading method takes in two parameters of type int and
+	Following an interrupt is an infinite loop that sends the CPU looking
+	for a match from its virtual address to a physical address with a valid bit set to true.
+	swapReading receives the virtual address and the swapfile pointer is responsible for
+	getting the data where it needs to be.
+
+
+*/
+int AddrSpace::swapReading(int fromVirtualLocation, int PhysicalLocation)
+{
+
+	fileSwapper->ReadAt(&(machine->mainMemory[PhysicalLocation * PageSize]),
+											PageSize, fromVirtualLocation * PageSize);
+	pageTable[fromVirtualLocation].valid = true;
+	pageTable[fromVirtualLocation].physicalPage = PhysicalLocation;
+
+	return 0;
 }
-//End Code Changes by Chau Cao

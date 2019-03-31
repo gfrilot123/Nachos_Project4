@@ -6,7 +6,7 @@
 #
 #    Nachos assumes that the location of the program startup routine (the
 # 	location the kernel jumps to when the program initially starts up)
-#       is at location 0.  This means: start.o must be the first .o passed
+#       is at location 0.  This means: start.o must be the first .o passed 
 # 	to ld, in order for the routine "Start" to be loaded at location 0
 #
 
@@ -35,7 +35,7 @@ CPP = gcc -E
 INCDIR =-I../userprog -I../threads
 CFLAGS = -G 0 -c $(INCDIR)
 
-all: halt shell matmult sort multitest hakunamatata
+all: halt shell matmult sort loop whee derp hammertest
 
 start.o: start.s ../userprog/syscall.h
 	$(CPP) $(CPPFLAGS) start.c > strt.s
@@ -47,6 +47,14 @@ halt.o: halt.c
 halt: halt.o start.o
 	$(LD) $(LDFLAGS) start.o halt.o -o halt.coff
 	../bin/coff2noff halt.coff halt
+
+hammertest.o: hammertest.c
+	$(CC) $(CFLAGS) -c hammertest.c
+hammertest: hammertest.o start.o
+	$(LD) $(LDFLAGS) start.o hammertest.o -o hammertest.coff
+	../bin/coff2noff hammertest.coff hammertest
+
+
 
 shell.o: shell.c
 	$(CC) $(CFLAGS) -c shell.c
@@ -60,20 +68,26 @@ sort: sort.o start.o
 	$(LD) $(LDFLAGS) start.o sort.o -o sort.coff
 	../bin/coff2noff sort.coff sort
 
-multitest.o: multitest.c
-	$(CC) $(CFLAGS) -c multitest.c
-multitest: multitest.o start.o
-	$(LD) $(LDFLAGS) start.o multitest.o -o multitest.coff
-	../bin/coff2noff multitest.coff multitest
-
-hakunamatata.o: hakunamatata.c
-	$(CC) $(CFLAGS) -c hakunamatata.c
-hakunamatata: hakunamatata.o start.o
-	$(LD) $(LDFLAGS) start.o hakunamatata.o -o hakunamatata.coff
-	../bin/coff2noff hakunamatata.coff hakunamatata
-
 matmult.o: matmult.c
 	$(CC) $(CFLAGS) -c matmult.c
 matmult: matmult.o start.o
 	$(LD) $(LDFLAGS) start.o matmult.o -o matmult.coff
 	../bin/coff2noff matmult.coff matmult
+	
+loop.o: loop.c
+	$(CC) $(CFLAGS) -c loop.c
+loop: loop.o start.o
+	$(LD) $(LDFLAGS) start.o loop.o -o loop.coff
+	../bin/coff2noff loop.coff loop
+	
+whee.o: whee.c
+	$(CC) $(CFLAGS) -c whee.c
+whee: whee.o start.o
+	$(LD) $(LDFLAGS) start.o whee.o -o whee.coff
+	../bin/coff2noff whee.coff whee
+
+derp.o: derp.c
+	$(CC) $(CFLAGS) -c derp.c
+derp: derp.o start.o
+	$(LD) $(LDFLAGS) start.o derp.o -o derp.coff
+	../bin/coff2noff derp.coff derp

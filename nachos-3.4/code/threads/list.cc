@@ -43,6 +43,7 @@ ListElement::ListElement(void *itemPtr, int sortKey)
 List::List()
 { 
     first = last = NULL; 
+	size = 0;
 }
 
 //----------------------------------------------------------------------
@@ -77,6 +78,7 @@ void
 List::Append(void *item)
 {
     ListElement *element = new ListElement(item, 0);
+	size++;
 
     if (IsEmpty()) {		// list is empty
 	first = element;
@@ -103,6 +105,7 @@ void
 List::Prepend(void *item)
 {
     ListElement *element = new ListElement(item, 0);
+	size++;
 
     if (IsEmpty()) {		// list is empty
 	first = element;
@@ -124,6 +127,7 @@ List::Prepend(void *item)
 void *
 List::Remove()
 {
+	size--;
     return SortedRemove(NULL);  // Same as SortedRemove, but ignore the key
 }
 

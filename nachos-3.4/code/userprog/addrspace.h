@@ -15,7 +15,6 @@
 
 #include "copyright.h"
 #include "filesys.h"
-#include "syscall.h"
 
 #define UserStackSize		1024 	// increase this as necessary!
 
@@ -31,24 +30,23 @@ class AddrSpace {
 
     void SaveState();			// Save/restore address space-specific
     void RestoreState();		// info on a context switch
+    unsigned int numPages;		// Number of pages in the virtual
+          // address space
 
-    //Begin Changes by Chau Cao
-    int getNumPages();
-    int getMemIndex();
 
-  public:
-    ExceptionType addTranslate(int virtAddr, int* physAddr, int size, bool writing);
-    int memIndex;
-    void setMemory();
-    void markMemory();
-    bool getPage(int x);
-    //unsigned int kernelRegisters[NumTotalRegs];
-    //End changes by Chau Cao
+    // Methods create here for file swappping
+    int swapWriting(int virtualLocation, bool evict);
+    int swapReading(int fromVirtualLocation, int PhysicalLocation);
 
+  private:
     TranslationEntry *pageTable;	// Assume linear page table translation
 					// for now!
-    unsigned int numPages;		// Number of pages in the virtual
-					// address space
+
+    // swapfile pointer created for opening a swap file.      
+    OpenFile *fileSwapper;
+	unsigned int startPage;		//Page number that the program starts at
+								//in physical memory
+	bool space;		//Boolean to remember if there was enough space or not
 };
 
 #endif // ADDRSPACE_H

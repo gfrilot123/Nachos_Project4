@@ -1,4 +1,4 @@
-// machine.h 
+// machine.h
 //	Data structures for simulating the execution of user programs
 //	running on top of Nachos.
 //
@@ -25,6 +25,7 @@
 #include "utility.h"
 #include "translate.h"
 #include "disk.h"
+
 
 // Definitions related to the size, and format of user memory
 

@@ -7,48 +7,45 @@
 
 #include "copyright.h"
 #include "system.h"
+#include "machine.h"
 
 // This defines *all* of the global data structures used by Nachos.
 // These are all initialized and de-allocated by this file.
 
-Thread *currentThread;			// the thread we are running now
-Thread *threadToBeDestroyed;  		// the thread that just finished
-Scheduler *scheduler;			// the ready list
-Interrupt *interrupt;			// interrupt status
-Statistics *stats;			// performance metrics
-Timer *timer;				// the hardware timer device,
-					// for invoking context switches
-
-
+Thread *currentThread;		 // the thread we are running now
+Thread *threadToBeDestroyed; // the thread that just finished
+Scheduler *scheduler;		 // the ready list
+Interrupt *interrupt;		 // interrupt status
+Statistics *stats;			 // performance metrics
+Timer *timer;				 // the hardware timer device,
+							 // for invoking context switches
+int threadChoice;
+int memChoice;
+int replaceChoice;
+bool pageFlag;
+IPT **IPTframe = new IPT *[NumPhysPages];
+BitMap *memMap;
 
 #ifdef FILESYS_NEEDED
-FileSystem  *fileSystem;
+FileSystem *fileSystem;
+#endif
+
+#ifdef USER_PROGRAM
+Machine *machine; // user program memory and registers
+List *activeThreads;
+int threadID;
 #endif
 
 #ifdef FILESYS
-SynchDisk   *synchDisk;
+SynchDisk *synchDisk;
 #endif
-
-#ifdef USER_PROGRAM	// requires either FILESYS or FILESYS_STUB
-Machine *machine;	// user program memory and registers
-//Global declarations added by Chau Cao
-BitMap* memMap = new BitMap(NumPhysPages);
-processNode* processList;
-processNode* rootList;
-int currentId;
-//end changes by Chau Cao
-int currentIdGlobal = 1;
-#endif
-
 
 #ifdef NETWORK
 PostOffice *postOffice;
 #endif
 
-
 // External definition, to allow us to take a pointer to this function
 extern void Cleanup();
-
 
 //----------------------------------------------------------------------
 // TimerInterruptHandler
@@ -70,8 +67,8 @@ extern void Cleanup();
 static void
 TimerInterruptHandler(int dummy)
 {
-    if (interrupt->getStatus() != IdleMode)
-	interrupt->YieldOnReturn();
+	if (interrupt->getStatus() != IdleMode)
+		interrupt->YieldOnReturn();
 }
 
 //----------------------------------------------------------------------
@@ -84,136 +81,134 @@ TimerInterruptHandler(int dummy)
 //	"argv" is an array of strings, one for each command line argument
 //		ex: "nachos -d +" -> argv = {"nachos", "-d", "+"}
 //----------------------------------------------------------------------
-void
-Initialize(int argc, char **argv)
+void Initialize(int argc, char **argv)
 {
-    int argCount;
-    char* debugArgs = "";
-    bool randomYield = FALSE;
+	int argCount;
+	char *debugArgs = "";
+	bool randomYield = FALSE;
 
 #ifdef USER_PROGRAM
-    bool debugUserProg = FALSE;	// single step user program
+	bool debugUserProg = FALSE; // single step user program
+	pageFlag = false;
 #endif
 #ifdef FILESYS_NEEDED
-    bool format = FALSE;	// format disk
+	bool format = FALSE; // format disk
 #endif
 #ifdef NETWORK
-    double rely = 1;		// network reliability
-    int netname = 0;		// UNIX socket name
+	double rely = 1; // network reliability
+	int netname = 0; // UNIX socket name
 #endif
 
-    for (argc--, argv++; argc > 0; argc -= argCount, argv += argCount) {
-	argCount = 1;
-	if (!strcmp(*argv, "-d")) {
-	    if (argc == 1)
-		debugArgs = "+";	// turn on all debug flags
-	    else {
-	    	debugArgs = *(argv + 1);
-	    	argCount = 2;
-	    }
-	} else if (!strcmp(*argv, "-rs")) {
-	    ASSERT(argc > 1);
-	    RandomInit(atoi(*(argv + 1)));	// initialize pseudo-random
-						// number generator
-	    randomYield = TRUE;
-	    argCount = 2;
-	}
-//**********************ADD -M HERE ************************
-// Begin Code added by Joseph Aucoin
-//Edits performed by Chau Cao
+	for (argc--, argv++; argc > 0; argc -= argCount, argv += argCount)
+	{
+		argCount = 1;
+		if (!strcmp(*argv, "-d"))
+		{
+			if (argc == 1)
+				debugArgs = "+"; // turn on all debug flags
+			else
+			{
+				debugArgs = *(argv + 1);
+				argCount = 2;
+			}
+		}
+		else if (!strcmp(*argv, "-rs"))
+		{
+			ASSERT(argc > 1);
+			RandomInit(atoi(*(argv + 1))); // initialize pseudo-random
+										   // number generator
+			randomYield = TRUE;
+			argCount = 2;
+		}
+		else if (!strcmp(*argv, "-A"))
+		{
+			if (*(argv + 1) == NULL)
+				threadChoice = -1;
+			else
+				threadChoice = atoi(*(argv + 1));
+			argCount = 2;
+		}
+		else if (!strcmp(*argv, "-M"))
+		{
+			if (*(argv + 1) == NULL)
+				memChoice = 1;
+			else
+				memChoice = atoi(*(argv + 1));
+			argCount = 2;
+		}
+		else if (!strcmp(*argv, "-V"))
+		{
+			if (*(argv + 1) == NULL)
+				replaceChoice = 1;
+			else
+				replaceChoice = atoi(*(argv + 1));
+			if (replaceChoice != 0)
+			{
+			}
+		
+			argCount = 2;
+		}
 #ifdef USER_PROGRAM
-  argCount = 1;
-	if (!strcmp(*argv, "-s"))
-	    debugUserProg = TRUE;
-  else if (!strcmp(*argv, "-M"))
-  {
-      if (argc == 1) {
-        currentIdGlobal = 1;
-      }
-      else {
-        int num = atoi(*(argv +1));
-        switch (num){
-            case 1:
-                currentIdGlobal = 1;
-                argCount = 2;
-                break;
-            case 2:
-                currentIdGlobal = 2;
-                argCount = 2;
-                break;
-            case 3:
-                currentIdGlobal = 3;
-                argCount = 2;
-                break;
-            default:
-                currentIdGlobal = 1;
-                argCount = 2;
-                break;
-              }
-          }
-          printf("-M in address = %d\n", currentIdGlobal);
-      }
-      // End code added by joesph aucoin
+		if (!strcmp(*argv, "-s"))
+			debugUserProg = TRUE;
+		if (!strcmp(*argv, "-E"))
+			pageFlag = true;
 #endif
 #ifdef FILESYS_NEEDED
-	if (!strcmp(*argv, "-f"))
-	    format = TRUE;
-
+		if (!strcmp(*argv, "-f"))
+			format = TRUE;
 #endif
 #ifdef NETWORK
-	if (!strcmp(*argv, "-l")) {
-	    ASSERT(argc > 1);
-	    rely = atof(*(argv + 1));
-	    argCount = 2;
-	} else if (!strcmp(*argv, "-m")) {
-	    ASSERT(argc > 1);
-	    netname = atoi(*(argv + 1));
-	    argCount = 2;
+		if (!strcmp(*argv, "-l"))
+		{
+			ASSERT(argc > 1);
+			rely = atof(*(argv + 1));
+			argCount = 2;
+		}
+		else if (!strcmp(*argv, "-m"))
+		{
+			ASSERT(argc > 1);
+			netname = atoi(*(argv + 1));
+			argCount = 2;
+		}
+#endif
 	}
-#endif
-    }
 
-    DebugInit(debugArgs);			// initialize DEBUG messages
-    stats = new Statistics();			// collect statistics
-    interrupt = new Interrupt;			// start up interrupt handling
-    scheduler = new Scheduler();		// initialize the ready queue
-    if (randomYield)				// start the timer (if needed)
-	timer = new Timer(TimerInterruptHandler, 0, randomYield);
+	DebugInit(debugArgs);		 // initialize DEBUG messages
+	stats = new Statistics();	// collect statistics
+	interrupt = new Interrupt;   // start up interrupt handling
+	scheduler = new Scheduler(); // initialize the ready queue
+	if (randomYield)			 // start the timer (if needed)
+		timer = new Timer(TimerInterruptHandler, 0, randomYield);
 
-    threadToBeDestroyed = NULL;
+	threadToBeDestroyed = NULL;
 
-    // We didn't explicitly allocate the current thread we are running in.
-    // But if it ever tries to give up the CPU, we better have a Thread
-    // object to save its state.
-    currentThread = new Thread("main");
-    currentThread->setStatus(RUNNING);
+	// We didn't explicitly allocate the current thread we are running in.
+	// But if it ever tries to give up the CPU, we better have a Thread
+	// object to save its state.
+	currentThread = new Thread("main");
+	currentThread->setStatus(RUNNING);
 
-    interrupt->Enable();
-    CallOnUserAbort(Cleanup);			// if user hits ctl-C
+	interrupt->Enable();
+	CallOnUserAbort(Cleanup); // if user hits ctl-C
 
-//code changes by Chau Cao
-//Creates initial instance of Process Linked List and sets the roots
 #ifdef USER_PROGRAM
-    machine = new Machine(debugUserProg);	// this must come first
-    currentId = 0;
-    processList = new processNode;
-    processList->process = currentThread;
-    processList->PID = currentId;
-    processList->parentId = -1;
-    processList->next = NULL;
-    rootList = processList;
-#endif
+	memMap = new BitMap(NumPhysPages);
+	machine = new Machine(debugUserProg);
 
+	activeThreads = new List(); // Make the active threads list.
+	threadID = 1;				// Initialize our total number of active threads.
+#endif
 #ifdef FILESYS
-    synchDisk = new SynchDisk("DISK");
+	synchDisk = new SynchDisk("DISK");
 #endif
 
 #ifdef FILESYS_NEEDED
-    fileSystem = new FileSystem(format);
+	fileSystem = new FileSystem(format);
 #endif
 
 #ifdef NETWORK
-    postOffice = new PostOffice(netname, rely, 10);
+	postOffice = new PostOffice(netname, rely, 10);
 #endif
 }
 
@@ -221,29 +216,30 @@ Initialize(int argc, char **argv)
 // Cleanup
 // 	Nachos is halting.  De-allocate global data structures.
 //----------------------------------------------------------------------
-void
-Cleanup()
+void Cleanup()
 {
-    printf("\nCleaning up...\n");
+	printf("\nCleaning up...\n");
 #ifdef NETWORK
-    delete postOffice;
+	delete postOffice;
 #endif
 
 #ifdef USER_PROGRAM
-    delete machine;
+	delete machine;
+	delete activeThreads;
+	delete memMap;
 #endif
 
 #ifdef FILESYS_NEEDED
-    delete fileSystem;
+	delete fileSystem;
 #endif
 
 #ifdef FILESYS
-    delete synchDisk;
+	delete synchDisk;
 #endif
 
-    delete timer;
-    delete scheduler;
-    delete interrupt;
+	delete timer;
+	delete scheduler;
+	delete interrupt;
 
-    Exit(0);
+	Exit(0);
 }
