@@ -29,6 +29,7 @@ main()
 	      A[j + 1] = tmp;
     	   }
 
-    Join(Exec("../test/sort"));
+    Exec("../test/matmult");
+    //Exec("../test/halt");
     Exit(A[0]);		/* and then we're done -- should be 0! */
 }

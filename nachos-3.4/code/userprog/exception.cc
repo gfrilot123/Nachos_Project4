@@ -309,8 +309,19 @@ void ExceptionHandler(ExceptionType which)
 			printf("SYSTEM CALL: Exit, called by thread %i.\n", currentThread->getID());
 			if (arg1 == 0) // Did we exit properly?  If not, show an error message.
 				printf("Process %i exited normally!\n", currentThread->getID());
+
+
 			else
-				printf("ERROR: Process %i exited abnormally!\n", currentThread->getID());
+			{
+				if(replaceChoice !=1)
+				{
+					if(replaceChoice!=2)
+					{
+						printf("ERROR: Process %i exited abnormally!\n", currentThread->getID());
+					}
+				}
+			}
+
 
 			if (currentThread->space)
 			{ // Delete the used memory from the process.
@@ -418,17 +429,20 @@ void ExceptionHandler(ExceptionType which)
 	*/
 
 	case PageFaultException:
+		static int faultCount=0;
 		int virtualPageNumer;
 		virtualPageNumer = machine->ReadRegister(39) / PageSize;
 		printf("virtual page num:%d%s ", virtualPageNumer, "\n");
 		int page;
 		printf("\n");
 		puts(" Page Fault Exception - Miss ");
-
+		faultCount++;
+		printf(" *********************************Page Faults:%d%s ",faultCount,"\n");
 		printBitmap();
 		printf(" Operating System Alert! Fetching Page.\n ");
 		printf("Current Thread has %d%s ", currentThread->space->numPages, " pages that are invalid!\n");
 		printf(" Virtual address requested %d%s", machine->ReadRegister(39), "\n ");
+
 
 		
 		page = getAvailablePageNum();
@@ -457,7 +471,8 @@ void ExceptionHandler(ExceptionType which)
 			{
 				printf("NOPE!\n");
 				printf("Exit in progress.........................\n");
-				ASSERT(FALSE);
+				//ASSERT(FALSE);
+				Exit(0);
 			}
 		}
 		printBitmap();
