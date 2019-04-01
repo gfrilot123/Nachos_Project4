@@ -21,9 +21,13 @@ Timer *timer;				 // the hardware timer device,
 							 // for invoking context switches
 int threadChoice;
 int memChoice;
-int replaceChoice;
 bool pageFlag;
-IPT **IPTframe = new IPT *[NumPhysPages];
+//Begin Code changes by Robert Knott
+int replaceChoice;		//global value that holds the user's page replacement option
+IPT **IPTframe = new IPT *[NumPhysPages];	//creates an array of pointers-to-pointers
+						//used to hold a process' origin thread
+						//and virutal page number
+//End Code changes by Robert Knott
 BitMap *memMap;
 
 #ifdef FILESYS_NEEDED

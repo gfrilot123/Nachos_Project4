@@ -447,56 +447,87 @@ void ExceptionHandler(ExceptionType which)
 		
 		page = getAvailablePageNum();
 
+		//Begin Code changes by Robert Knott
+		//if the physical memory is full (represented by page == -1)
 		if (page == -1)
 		{
 			printf("All frames are currently in use! Swapping in progress....\n");
 
+			//reference the replaceChoice value to determine what method is used
+			//to replace the physical memory pages
+			//if replaceChoice is 1, then use the FIFO page replacement method
 			if (replaceChoice == 1)
 			{
 				printf("FIFO!\n");
+				//create fifoPage, a static int that mimics a FIFO linked list
+					//as the FIFO method used in this implementation will
+					//just cycle from 0 to 31 in numerical order and then
+					//return to 0, a static int can more easily store and
+					//manage this functionality.
 				static int fifoPage = 0;
 				page = fifoPage;
+				//upon declaring the page to be replaced, increment fifoPage
+				//so that the next time a page replacement is needed, it 
+				//will replace the next page in the physical memory
 				fifoPage++;
+				//if fifoPage equals the number of physical pages, then reset
+				//it to 0 so it pulls from the beginning of the physical memory
 				if (fifoPage == NumPhysPages)
 				{
 					fifoPage = 0;
 				}
 			}
+			//if replaceChoice is 2, then use the Random page replacement method
 			else if (replaceChoice == 2)
 			{
 				printf("RANDOM!\n");
+				//set the page to be replaced as a random number between
+				//0 and 31
 				page = Random() % NumPhysPages;
 			}
+			//if replaceChoice is neither 1 or 2, then do not use page replacement
 			else
 			{
 				printf("NOPE!\n");
+				//no page replacement happens
 				printf("Exit in progress.........................\n");
-				//ASSERT(FALSE);
+				//Force the OS to terminate
 				Exit(0);
 			}
 		}
 		printBitmap();
 
-		
+		//check to make sure that the page's IPT frame is not NULL
 		if (IPTframe[page])
 		{
+			//if something already exists in the page's IPT frame, then write
+			//what's in the page's IPT frame into a swap file.
 			IPTframe[page]->thread->space->swapWriting(IPTframe[page]->vPageNumber, true);
 
-
+			//be sure to delete and clear out the IPT's frame.  After being created, it
+			//needs to be deleted so it does not stay in memory.
 			delete IPTframe[page];
 			IPTframe[page] = NULL;
 		}
 
+		//if the page's IPT frame is NULL, then
+		//create a new IPTframe, which is itself a new IPT object
+			//and IPT object is just used to hold a page's thread and
+			//the virtual page number associated with the thread for future
+			//reference
 		IPTframe[page] = new IPT();
 		IPTframe[page]->thread = currentThread;
 		IPTframe[page]->vPageNumber = virtualPageNumer;
 
+		//after creating the IPT frame and loading it with the current page's thread and
+		//virtual page number, load those into the main memory
 		IPTframe[page]->thread->space->swapReading(IPTframe[page]->vPageNumber, page);
 
 		printf("The value of page for the swapReading method is :%d%s", page, "\n");
 	
 		//exit(0);
 		break;
+		//End Code changes by Robert Knott
 
 	default:;
 		//      printf("Unexpected user mode exception %d %d\n", which, type);

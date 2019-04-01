@@ -33,8 +33,10 @@ extern Statistics *stats;			// performance metrics
 extern Timer *timer;				// the hardware alarm clock
 extern int threadChoice;
 extern int memChoice;
+//Begin Code changes by Robert Knott
 extern int replaceChoice;         // Command line options for demand,random, or FIFO.
 extern IPT** IPTframe;
+//End Code changes by Robert Knott
 extern bool pageFlag;
 extern BitMap *memMap;				//Bitmap to keep track of memory use
 
