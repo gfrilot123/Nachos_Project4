@@ -22,7 +22,7 @@ main()
 {
 	
     int i, j, k;
-	Join(Exec("../test/sort"));
+	//Join(Exec("../test/sort"));
 
     for (i = 0; i < Dim; i++)		/* first initialize the matrices */
 	for (j = 0; j < Dim; j++) {

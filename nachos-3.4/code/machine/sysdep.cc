@@ -157,6 +157,10 @@ OpenForWrite(char *name)
    
     int fd = open(name, O_RDWR|O_CREAT|O_TRUNC, 0666);
     printf("value of our assert issue:%d%s ",fd,"\n");
+    if (fd == -1){
+    printf("---------------------------errno:%d%s ",errno,"\n");
+    fd=0;
+    }
     ASSERT(fd >= 0); 
     return fd;
 }

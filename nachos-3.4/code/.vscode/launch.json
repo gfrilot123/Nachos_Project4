@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/userprog/nachos",
-            "args": ["-V", "1", "-x","./test/matmult"],
+            "args": ["./nachos -V 1 -x ./test/whee","-rs 1234"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
