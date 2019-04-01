@@ -21,7 +21,7 @@ Timer *timer;				 // the hardware timer device,
 							 // for invoking context switches
 int threadChoice;
 int memChoice;
-bool pageFlag;
+bool pageFlag = FALSE;
 //Begin Code changes by Robert Knott
 int replaceChoice;		//global value that holds the user's page replacement option
 IPT **IPTframe = new IPT *[NumPhysPages];	//creates an array of pointers-to-pointers
@@ -149,14 +149,19 @@ void Initialize(int argc, char **argv)
 			if (replaceChoice != 0)
 			{
 			}
-		
+
 			argCount = 2;
 		}
 #ifdef USER_PROGRAM
 		if (!strcmp(*argv, "-s"))
 			debugUserProg = TRUE;
-		if (!strcmp(*argv, "-E"))
+		if (!strcmp(*argv, "-E")){
 			pageFlag = true;
+		}else
+		{
+			pageFlag = FALSE;
+		}
+
 #endif
 #ifdef FILESYS_NEEDED
 		if (!strcmp(*argv, "-f"))

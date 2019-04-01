@@ -99,11 +99,11 @@ void processCreator(int arg) // Used when a process first actually runs, not whe
 
 /*
 	Begin code changes by Gerald Frilot
-	An int name page is created and requests an available page number from the 
-	memMap. If replacechoice from the command line == 0 just do a random memMap 
+	An int name page is created and requests an available page number from the
+	memMap. If replacechoice from the command line == 0 just do a random memMap
 	find and return the first empty slot
 	Otherwise loop through all the mainmemory and return the first NULL frame.
-	If all slots are used return -1. 
+	If all slots are used return -1.
 */
 
 int getAvailablePageNum()
@@ -123,10 +123,10 @@ int getAvailablePageNum()
 
 
 /*
-	Begin code changes by Gerald Frilot 
+	Begin code changes by Gerald Frilot
 	This is just a quick way of printing the demand paging request if replaceChoice at
 	command line ==0.
-	If its not 0 then print a refeence to NULL frames with a 0,1 otherwise. 
+	If its not 0 then print a refeence to NULL frames with a 0,1 otherwise.
 */
 void printBitmap()
 {
@@ -331,7 +331,7 @@ void ExceptionHandler(ExceptionType which)
 					{
 						if (IPTframe[i] == NULL) continue;
 						if (IPTframe[i]->thread->getID() != currentThread->getID())continue;
-						
+
 						delete IPTframe[i];
 						IPTframe[i] = NULL;
 
@@ -417,7 +417,7 @@ void ExceptionHandler(ExceptionType which)
 	   Page Fault Exception added by Gerald Frilot
 	   On a failed load we initialize the virtualPageNumber with  register 39 value.
 	   A series of print statements follow to show what is going on behind the scenes.
-	   Depending on what option was passed from command line, we update page with a local 
+	   Depending on what option was passed from command line, we update page with a local
 	   function call to getavailablePageNum()
 	   -1 means all pages are being used, begin page swapping techiques
 	   if replacement choice was 1 we do a FIFO operation
@@ -441,11 +441,21 @@ void ExceptionHandler(ExceptionType which)
 		printBitmap();
 		printf(" Operating System Alert! Fetching Page.\n ");
 		printf("Current Thread has %d%s ", currentThread->space->numPages, " pages that are invalid!\n");
-		printf(" Virtual address requested %d%s", machine->ReadRegister(39), "\n ");
+		// Code added by Joseph Aucoin
+		if(pageFlag){
+			printf(" Virtual address requested %d%s", machine->ReadRegister(39), "\n ");
+		}
 
 
-		
+
+
 		page = getAvailablePageNum();
+		// Code added by Joseph Aucoin
+		if(pageFlag){
+			printf("Physical page being requested %d\n", page);
+		}
+
+
 
 		//Begin Code changes by Robert Knott
 		//if the physical memory is full (represented by page == -1)
@@ -467,7 +477,7 @@ void ExceptionHandler(ExceptionType which)
 				static int fifoPage = 0;
 				page = fifoPage;
 				//upon declaring the page to be replaced, increment fifoPage
-				//so that the next time a page replacement is needed, it 
+				//so that the next time a page replacement is needed, it
 				//will replace the next page in the physical memory
 				fifoPage++;
 				//if fifoPage equals the number of physical pages, then reset
@@ -475,6 +485,10 @@ void ExceptionHandler(ExceptionType which)
 				if (fifoPage == NumPhysPages)
 				{
 					fifoPage = 0;
+				}
+				// Code added by Joseph Aucoin
+				if(pageFlag){
+					printf("Physical page being requested %d\n", page);
 				}
 			}
 			//if replaceChoice is 2, then use the Random page replacement method
@@ -484,6 +498,10 @@ void ExceptionHandler(ExceptionType which)
 				//set the page to be replaced as a random number between
 				//0 and 31
 				page = Random() % NumPhysPages;
+				// Code added by Joseph Aucoin
+				if(pageFlag){
+					printf("Physical page being requested %d\n", page);
+				}
 			}
 			//if replaceChoice is neither 1 or 2, then do not use page replacement
 			else
@@ -494,6 +512,10 @@ void ExceptionHandler(ExceptionType which)
 				//Force the OS to terminate
 				Exit(0);
 			}
+		}
+		// Code added by Joseph Aucoin
+		if(pageFlag){
+			printf("Physical page being replaced %d\n", page);
 		}
 		printBitmap();
 
@@ -524,7 +546,7 @@ void ExceptionHandler(ExceptionType which)
 		IPTframe[page]->thread->space->swapReading(IPTframe[page]->vPageNumber, page);
 
 		printf("The value of page for the swapReading method is :%d%s", page, "\n");
-	
+
 		//exit(0);
 		break;
 		//End Code changes by Robert Knott
