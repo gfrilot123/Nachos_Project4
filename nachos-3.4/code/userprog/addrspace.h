@@ -40,9 +40,11 @@ class AddrSpace {
 
   private:
     TranslationEntry *pageTable;	// Assume linear page table translation
+    TranslationEntry *firstLevelPageTable = new TranslationEntry[numPages];
+    TranslationEntry *innerPagePointer;
 					// for now!
 
-    // swapfile pointer created for opening a swap file.      
+    // swapfile pointer created for opening a swap file.
     OpenFile *fileSwapper;
 	unsigned int startPage;		//Page number that the program starts at
 								//in physical memory

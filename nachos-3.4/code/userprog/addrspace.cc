@@ -78,6 +78,7 @@ AddrSpace::AddrSpace(OpenFile *executable)
 	numPages = divRoundUp(size, PageSize);
 	size = numPages * PageSize;
 
+	printf("***************__________Using two-level paging!");
 	// Print statements added here to direct the flow of traffic
 	printf(" Main memory holds %d%s ", NumPhysPages, " pages.\n");
 	printf("The current process uses %d%s ", numPages, " pages total.\n");
@@ -96,6 +97,16 @@ AddrSpace::AddrSpace(OpenFile *executable)
 		*/
 
 	pageTable = new TranslationEntry[numPages];
+
+	
+	firstLevelPageTable = new TranslationEntry[numPages];
+	//twoLevelPageTable = new TranslationEntry[numPages];
+
+	
+
+
+
+
 	for (i = 0; i < numPages; i++)
 	{
 		pageTable[i].virtualPage = i; // for now, virtual page # = phys page #
@@ -108,7 +119,8 @@ AddrSpace::AddrSpace(OpenFile *executable)
 		pageTable[i].dirty = FALSE;
 		pageTable[i].readOnly = FALSE; // if the code segment was entirely on
 																	 // a separate page, we could set its
-																	 // pages to be read-only
+																	 // pages to be read
+	}
 
 		//*******************************************************************************************************************
 		//  Created by Gerald Frilot
@@ -156,6 +168,111 @@ AddrSpace::AddrSpace(OpenFile *executable)
 			executable->ReadAt(initNoffCode, noffH.initData.size, noffH.initData.inFileAddr);
 			fileSwapper->WriteAt(initNoffCode, noffH.initData.size, noffH.code.size);
 		}
+	
+
+	if(twoLevelPaging == 3)
+
+	{
+
+	NoffHeader noffH;
+	unsigned int i, size, pAddr, counter;
+	space = false;
+
+	executable->ReadAt((char *)&noffH, sizeof(noffH), 0);
+	if ((noffH.noffMagic != NOFFMAGIC) &&
+			(WordToHost(noffH.noffMagic) == NOFFMAGIC))
+		SwapHeader(&noffH);
+	ASSERT(noffH.noffMagic == NOFFMAGIC);
+
+	// how big is address space?
+	size = noffH.code.size + noffH.initData.size + noffH.uninitData.size + UserStackSize; // we need to increase the size
+	// to leave room for the stack
+	numPages = divRoundUp(size, PageSize);
+	size = numPages * PageSize;
+
+	// Print statements added here to direct the flow of traffic
+	printf(" Main memory holds %d%s ", NumPhysPages, " pages.\n");
+	printf("The current process uses %d%s ", numPages, " pages total.\n");
+	printf("One page in main memory is  %d%s ", PageSize, " bytes long.\n");
+	printf("The total page size for the process being executed is  %d%s", size, " bytes long.\n");
+
+	space = true;
+	pageTable = new TranslationEntry[numPages];
+
+	for (i = 0; i < numPages; i++)
+	{
+		pageTable[i].virtualPage = i; // for now, virtual page # = phys page #
+		pageTable[i].physicalPage = -1;
+		//**********************************************
+		// VALID BIT SET TO FALSE HERE BY GERALD FRILOT
+		//**********************************************
+		pageTable[i].valid = FALSE;
+		pageTable[i].use = FALSE;
+		pageTable[i].dirty = FALSE;
+		pageTable[i].readOnly = FALSE; // if the code segment was entirely on
+																	 // a separate page, we could set its
+																	 // pages to be read
+	
+	}
+	//*********************************************************************************************************************
+
+		for (int j = 0; j < numPages; j++)
+	{
+		firstLevelPageTable[j].virtualPage = j; // for now, virtual page # = phys page #
+		firstLevelPageTable[j].physicalPage = -1;
+		//**********************************************
+		// VALID BIT SET TO FALSE HERE BY GERALD FRILOT
+		//**********************************************
+		firstLevelPageTable[j].valid = FALSE;
+		firstLevelPageTable[j].use = FALSE;
+		firstLevelPageTable[j].dirty = FALSE;
+		firstLevelPageTable[j].readOnly = FALSE; // if the code segment was entirely on
+																	 // a separate page, we could set its
+																	 // pages to be read
+	
+	}
+		char swapArray[10] = {NULL};
+
+		snprintf(swapArray, 10, "%i", currentThread->getID()); // Does not allow overflow
+
+		bool fileCreations = fileSystem->Create(swapArray, size);
+		fileSwapper = fileSystem->Open(swapArray);
+
+		//****************************************************************************************************
+		// Created by Gerald Frilot
+		// Two buffers created
+		// One of size noffH.code and another of size noffH.initdata
+		// The executable will read instructions at the beginning of the buffer to the 
+		// size of the buffer at position 
+		// The fileswapper pointer is writing at the buffer of code size at 0th position.
+		// Init data position happens at noffh.code.size
+		// The entire code size must be passed here so the CPU knows when to stop executing
+		// Fragments are placed into mainmemory in the size of 256 bytes wide.
+		// Executable reads first and an interrupt is triggered.
+		// The fileswapper pointer takes control and assists during the interrupts.
+		//****************************************************************************************************
+
+		if (noffH.code.size > 0)
+		{
+
+			char *noffcodes = new char[noffH.code.size];
+			//fileSwapper does a read from the buffer, this many bytes ,at position 0
+			executable->ReadAt(noffcodes, noffH.code.size, noffH.code.inFileAddr);
+
+			//fileSwapper does a write to the buffer, this many bytes ,at position 0
+			fileSwapper->WriteAt(noffcodes, noffH.code.size, 0);
+		}
+		if (noffH.initData.size > 0)
+		{
+
+			char *initNoffCodes = new char[noffH.initData.size];
+			executable->ReadAt(initNoffCodes, noffH.initData.size, noffH.initData.inFileAddr);
+			fileSwapper->WriteAt(initNoffCodes, noffH.initData.size, noffH.code.size);
+		}
+
+
+
+
 	}
 }
 
@@ -291,6 +408,8 @@ int AddrSpace::swapReading(int fromVirtualLocation, int PhysicalLocation)
 											PageSize, fromVirtualLocation * PageSize);
 	pageTable[fromVirtualLocation].valid = true;
 	pageTable[fromVirtualLocation].physicalPage = PhysicalLocation;
+	firstLevelPageTable[fromVirtualLocation].valid = true;
+	firstLevelPageTable[fromVirtualLocation].physicalPage = PhysicalLocation;
 
 	return 0;
 }
